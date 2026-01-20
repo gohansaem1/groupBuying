@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 헬퍼 함수
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == "admin";
+    }
+    
+    function isOrganizer() {
+      return isSignedIn() && getUserData().role == "organizer";
+    }
+    
+    function isOrganizerPending() {
+      return isSignedIn() && getUserData().role == "organizer_pending";
+    }
+    
+    // 사용자 데이터
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // 컬렉션 쿼리: 관리자만 모든 사용자 조회 가능
+      allow list: if isAdmin();
+    }
+    
+    // 관리자 설정
+    match /adminSettings/{document=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // Organizer 수수료율
+    match /organizerCommissions/{organizerId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // 상품
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+      // 컬렉션 쿼리 허용 (모든 로그인 사용자가 읽을 수 있음)
+      allow list: if isSignedIn();
+    }
+    
+    // 그룹
+    match /groups/{groupId} {
+      allow read: if isSignedIn();
+      allow create: if isOrganizer();
+      // 업데이트: Organizer(자신의 그룹), Admin, 또는 일반 사용자(주문 생성 시 currentTotal 업데이트용)
+      allow update: if (
+        (isOrganizer() && resource.data.organizerId == request.auth.uid) || 
+        isAdmin() ||
+        // 일반 사용자가 주문 생성 시 그룹의 currentTotal만 증가시킬 수 있음
+        (isSignedIn() && 
+         // currentTotal은 증가만 가능 (감소 불가)
+         request.resource.data.currentTotal >= resource.data.currentTotal &&
+         // 다른 필드는 변경 불가
+         request.resource.data.organizerId == resource.data.organizerId &&
+         request.resource.data.productId == resource.data.productId &&
+         request.resource.data.productName == resource.data.productName &&
+         request.resource.data.productPrice == resource.data.productPrice &&
+         request.resource.data.minimumTotal == resource.data.minimumTotal &&
+         request.resource.data.organizerName == resource.data.organizerName &&
+         // status는 '진행중'에서 '달성'으로만 변경 가능 (조건: currentTotal >= minimumTotal)
+         ((resource.data.status == '진행중' && 
+           request.resource.data.status == '달성' && 
+           request.resource.data.currentTotal >= request.resource.data.minimumTotal) ||
+          (request.resource.data.status == resource.data.status)))
+      );
+      
+      // 컬렉션 쿼리 허용 (모든 로그인 사용자가 읽을 수 있음)
+      allow list: if isSignedIn();
+    }
+    
+    // 주문
+    match /orders/{orderId} {
+      // 단일 문서 읽기
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        isOrganizer() || 
+        isAdmin()
+      );
+      
+      // 컬렉션 쿼리 허용
+      // 모든 로그인 사용자가 조회 가능 (쿼리 필터로 제한됨)
+      // - 사용자는 where('userId', '==', userId)로 자신의 주문만 조회
+      // - Organizer는 where('groupId', '==', groupId)로 자신의 그룹 주문만 조회
+      // - Admin은 모든 주문 조회 가능
+      allow list: if isSignedIn();
+      
+      allow create: if isSignedIn() && request.resource.data.totalPrice >= 10000;
+      allow update: if isAdmin() || (
+        isOrganizer() && 
+        get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.organizerId == request.auth.uid
+      );
+      // 주문 삭제: Organizer(자신의 그룹) 또는 Admin만 가능
+      allow delete: if isAdmin() || (
+        isOrganizer() && 
+        get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.organizerId == request.auth.uid
+      );
+    }
+  }
+}
+
