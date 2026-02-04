@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signInWithKakao, signInWithTestUser, getCurrentUserProfile, agreeToUserTerms } from '@/lib/firebase/auth'
 import { initKakao, waitForKakaoSDK } from '@/lib/firebase/kakao'
 import TermsAgreementModal from '@/components/TermsAgreementModal'
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const returnUrl = searchParams?.get('returnUrl') || '/'
@@ -94,8 +94,15 @@ export default function LoginPage() {
       const profile = await getCurrentUserProfile()
       setShowTermsModal(false)
       
-      // 정상 진행
-      handlePostLogin(profile)
+      // 약관 동의 후 리다이렉트 (프로필은 홈 페이지에서 처리)
+      console.log('[로그인 페이지] 약관 동의 완료, 리다이렉트 시작', { returnUrl })
+      
+      // 닉네임이 없으면 닉네임 설정 페이지로, 있으면 returnUrl로
+      if (!profile?.nickname) {
+        router.push('/setup-nickname')
+      } else {
+        router.push(pendingRedirect || returnUrl)
+      }
     } catch (err: any) {
       setError(err.message || '동의 처리에 실패했습니다.')
       setLoading(false)
@@ -227,6 +234,18 @@ export default function LoginPage() {
         />
       )}
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+        <div className="text-lg">로딩 중...</div>
+      </div>
+    }>
+      <LoginPageContent />
+    </Suspense>
   )
 }
 

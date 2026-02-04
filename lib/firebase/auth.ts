@@ -18,7 +18,9 @@ export interface UserProfile {
   nickname: string | null // 닉네임 필드 추가
   photoURL: string | null
   role: UserRole
-  agreedToTerms?: boolean // 서비스 이용 약관 동의 여부
+  agreedToTerms?: boolean // 서비스 이용 약관 동의 여부 (하위 호환성)
+  userAgreedToTerms?: boolean // 일반 사용자 약관 동의 여부
+  organizerAgreedToTerms?: boolean // 진행자 약관 동의 여부
   createdAt: any
   updatedAt: any
   // 진행자 신청 정보 (organizer_pending 또는 organizer일 때만 존재)

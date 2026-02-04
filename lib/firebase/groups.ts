@@ -43,8 +43,8 @@ export interface Group {
   currentTotal: number // 현재 총액
   status: '진행중' | '달성' | '확정' | '배송중' | '완료'
   imageUrl?: string // 공동구매 건 대표 이미지 URL
-  createdAt: Timestamp
-  updatedAt: Timestamp
+  createdAt: Timestamp | any // serverTimestamp() 사용 시 FieldValue 타입
+  updatedAt: Timestamp | any // serverTimestamp() 사용 시 FieldValue 타입
   // 날짜 관련 필드
   startDate?: Timestamp // 공동구매 시작일
   endDate?: Timestamp // 공동구매 종료일 (주문 마감일)
@@ -77,8 +77,8 @@ export interface Order {
   unitPrice: number
   totalPrice: number
   status: '주문완료' | '확정' | '배송중' | '완료'
-  createdAt: Timestamp
-  updatedAt: Timestamp
+  createdAt: Timestamp | any // serverTimestamp() 사용 시 FieldValue 타입
+  updatedAt: Timestamp | any // serverTimestamp() 사용 시 FieldValue 타입
 }
 
 // 그룹 생성 (메뉴판 방식 - 여러 상품 선택 가능)
@@ -930,7 +930,7 @@ export async function cancelOrder(orderId: string, userId?: string): Promise<voi
     const oldStatus = group.status
     
     // 상태 업데이트: 확정 상태 이후에는 상태 변경 불가
-    const statusUpdates: Partial<Group> = {
+    const statusUpdates: any = {
       currentTotal: newTotal,
       updatedAt: serverTimestamp(),
     }
@@ -998,7 +998,7 @@ export async function cancelUserOrdersInGroup(groupId: string, userId: string): 
     const newTotal = Math.max(0, group.currentTotal - totalPriceToDeduct)
     
     // 상태 업데이트: 확정 상태 이후에는 상태 변경 불가
-    const statusUpdates: Partial<Group> = {
+    const statusUpdates: any = {
       currentTotal: newTotal,
       updatedAt: serverTimestamp(),
     }
@@ -1280,8 +1280,8 @@ export async function createMultipleOrders(
   }
 
   // 각 사용자별로 기존 주문 금액 조회 및 최소 주문 금액 체크
-  for (const [userId, userGroups] of userGroupTotals.entries()) {
-    for (const [groupId, newOrderTotal] of userGroups.entries()) {
+  for (const [userId, userGroups] of Array.from(userGroupTotals.entries())) {
+    for (const [groupId, newOrderTotal] of Array.from(userGroups.entries())) {
       // 해당 사용자의 기존 주문 조회 (주문완료 상태만)
       const ordersRef = collection(db, 'orders')
       const q = query(
@@ -1356,7 +1356,7 @@ export async function createMultipleOrders(
   }
 
   // 그룹 총액 업데이트
-  for (const [groupId, additionalTotal] of groupTotals.entries()) {
+  for (const [groupId, additionalTotal] of Array.from(groupTotals.entries())) {
     const groupRef = doc(db, 'groups', groupId)
     const groupSnap = await getDoc(groupRef)
     
@@ -1366,7 +1366,7 @@ export async function createMultipleOrders(
       const oldStatus = group.status
       
       // 상태 업데이트: 확정 상태 이후에는 주문 추가 불가 (이미 체크되어 있음)
-      const statusUpdates: Partial<Group> = {
+      const statusUpdates: any = {
         currentTotal: newTotal,
         updatedAt: serverTimestamp(),
       }
@@ -1383,10 +1383,10 @@ export async function createMultipleOrders(
       await updateDoc(groupRef, statusUpdates)
       
       // 상태 변경 감사 로그
-      if (statusUpdates.status && statusUpdates.status !== oldStatus) {
+      if (statusUpdates.status && statusUpdates.status !== oldStatus && userProfile) {
         const { logGroupStatusChanged } = await import('./auditLogs')
         await logGroupStatusChanged(
-          order.userId,
+          userProfile.uid,
           userName || undefined,
           groupId,
           group.title,
