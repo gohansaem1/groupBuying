@@ -8,7 +8,7 @@ import { getCurrentUserProfile, UserProfile } from '@/lib/firebase/auth'
 
 interface AuthGuardProps {
   children: React.ReactNode
-  allowedRoles?: ('user' | 'organizer_pending' | 'organizer' | 'admin')[]
+  allowedRoles?: ('user' | 'organizer_pending' | 'organizer' | 'admin' | 'owner')[]
 }
 
 export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
@@ -30,10 +30,14 @@ export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
       const profile = await getCurrentUserProfile()
       setUserProfile(profile)
       
-      if (profile && allowedRoles && !allowedRoles.includes(profile.role)) {
-        // 역할이 허용되지 않으면 홈으로 리다이렉트
-        router.push('/')
-        return
+      if (profile && allowedRoles) {
+        // owner는 admin 권한도 가짐
+        const hasAccess = allowedRoles.includes(profile.role) || 
+                         (profile.role === 'owner' && allowedRoles.includes('admin'))
+        if (!hasAccess) {
+          router.push('/')
+          return
+        }
       }
       
       setLoading(false)
@@ -50,8 +54,12 @@ export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
     )
   }
 
-  if (allowedRoles && !allowedRoles.includes(userProfile.role)) {
-    return null
+  if (allowedRoles) {
+    const hasAccess = allowedRoles.includes(userProfile.role) || 
+                     (userProfile.role === 'owner' && allowedRoles.includes('admin'))
+    if (!hasAccess) {
+      return null
+    }
   }
 
   return <>{children}</>

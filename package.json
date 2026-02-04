@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "create-test-users": "node scripts/create-test-users.js"
+    "create-test-users": "node scripts/create-test-users.js",
+    "update-product-images": "node scripts/update-product-images.js"
   },
   "dependencies": {
     "@types/jsonwebtoken": "^9.0.10",
@@ -17,7 +18,8 @@
     "jwks-rsa": "^3.2.1",
     "next": "^16.1.4",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",

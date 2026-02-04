@@ -6,10 +6,10 @@ import {
   onAuthStateChanged
 } from 'firebase/auth'
 import { auth } from './config'
-import { doc, getDoc, setDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, serverTimestamp, updateDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore'
 import { db } from './config'
 
-export type UserRole = 'user' | 'organizer_pending' | 'organizer' | 'admin'
+export type UserRole = 'user' | 'organizer_pending' | 'organizer' | 'admin' | 'owner'
 
 export interface UserProfile {
   uid: string
@@ -18,8 +18,24 @@ export interface UserProfile {
   nickname: string | null // 닉네임 필드 추가
   photoURL: string | null
   role: UserRole
+  agreedToTerms?: boolean // 서비스 이용 약관 동의 여부
   createdAt: any
   updatedAt: any
+  // 진행자 신청 정보 (organizer_pending 또는 organizer일 때만 존재)
+  organizerApplication?: {
+    realName: string // 실명
+    phoneNumber: string // 휴대폰 번호
+    deliveryPostcode: string // 우편번호
+    deliveryAddress: string // 기본주소
+    deliveryAddressDetail: string // 상세주소
+    buildingPassword?: string // 공동현관 비밀번호 (선택)
+    accountNumber: string // 정산 계좌번호
+    agreedToPrivacy: boolean // 개인정보 수집·이용 동의 (필수)
+    agreedToResponsibility: boolean // 진행자 운영 책임 동의 (필수)
+    agreedToPickup: boolean // 주문내역 확인 및 픽업 운영 동의 (필수)
+    agreedToMarketing?: boolean // 마케팅 정보 수신 동의 (선택)
+    appliedAt: any // 신청 일시
+  }
 }
 
 // 카카오 로그인
@@ -82,6 +98,34 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
   return null
 }
 
+// 일반 사용자 약관 동의 처리
+export async function agreeToUserTerms(): Promise<void> {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('로그인이 필요합니다.')
+  }
+
+  const userRef = doc(db, 'users', user.uid)
+  await updateDoc(userRef, {
+    userAgreedToTerms: true,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+// 진행자 약관 동의 처리
+export async function agreeToOrganizerTerms(): Promise<void> {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('로그인이 필요합니다.')
+  }
+
+  const userRef = doc(db, 'users', user.uid)
+  await updateDoc(userRef, {
+    organizerAgreedToTerms: true,
+    updatedAt: serverTimestamp(),
+  })
+}
+
 // 닉네임 설정 (변경 포함)
 export async function setNickname(nickname: string, currentNickname?: string | null): Promise<void> {
   const user = auth.currentUser
@@ -91,9 +135,9 @@ export async function setNickname(nickname: string, currentNickname?: string | n
 
   const trimmedNickname = nickname.trim()
   
-  // 현재 닉네임과 같으면 중복 검사 생략
+  // 현재 닉네임과 같으면 변경 불필요
   if (currentNickname && trimmedNickname === currentNickname) {
-    return // 변경 없음
+    throw new Error('변경된 내용이 없습니다.')
   }
 
   // 닉네임 중복 검사 (현재 닉네임 제외)
@@ -117,6 +161,44 @@ export async function setNickname(nickname: string, currentNickname?: string | n
     nickname: trimmedNickname,
     updatedAt: serverTimestamp(),
   })
+  
+  // 해당 사용자가 생성한 모든 공동구매 건의 organizerName 업데이트
+  const groupsRef = collection(db, 'groups')
+  const groupsQuery = query(groupsRef, where('organizerId', '==', user.uid))
+  const groupsSnapshot = await getDocs(groupsQuery)
+  
+  // 해당 사용자의 모든 주문의 userName 업데이트
+  const ordersRef = collection(db, 'orders')
+  const ordersQuery = query(ordersRef, where('userId', '==', user.uid))
+  const ordersSnapshot = await getDocs(ordersQuery)
+  
+  // 배치 업데이트
+  const batch = writeBatch(db)
+  
+  // 공동구매 건 업데이트
+  if (!groupsSnapshot.empty) {
+    groupsSnapshot.docs.forEach((groupDoc) => {
+      batch.update(groupDoc.ref, {
+        organizerName: trimmedNickname,
+        updatedAt: serverTimestamp(),
+      })
+    })
+  }
+  
+  // 주문 업데이트
+  if (!ordersSnapshot.empty) {
+    ordersSnapshot.docs.forEach((orderDoc) => {
+      batch.update(orderDoc.ref, {
+        userName: trimmedNickname,
+        updatedAt: serverTimestamp(),
+      })
+    })
+  }
+  
+  // 배치 커밋
+  if (!groupsSnapshot.empty || !ordersSnapshot.empty) {
+    await batch.commit()
+  }
 }
 
 // 승인 요청 취소 (organizer_pending -> user)
@@ -139,8 +221,10 @@ export async function cancelOrganizerApplication(): Promise<void> {
     throw new Error('승인 대기 중인 상태가 아닙니다.')
   }
 
+  // organizerApplication 정보도 함께 삭제
   await updateDoc(userRef, {
     role: 'user',
+    organizerApplication: null,
     updatedAt: serverTimestamp(),
   })
 }

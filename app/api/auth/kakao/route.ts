@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
         const userSnap = await userRef.get()
         
         if (!userSnap.exists) {
-          // 새 사용자 프로필 생성 (nickname은 null로 시작)
+          // 새 사용자 프로필 생성 (nickname은 null로 시작, 동의는 false로 시작)
           await userRef.set({
             uid,
             email,
@@ -204,6 +204,8 @@ export async function POST(request: NextRequest) {
             nickname: null, // 닉네임은 별도 설정 필요
             photoURL,
             role: 'user',
+            userAgreedToTerms: false, // 일반 사용자 동의는 아직 하지 않음
+            organizerAgreedToTerms: false, // 진행자 동의는 아직 하지 않음
             createdAt: new Date(),
             updatedAt: new Date(),
           })

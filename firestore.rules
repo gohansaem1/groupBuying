@@ -1,114 +1,310 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    
-    // 헬퍼 함수
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-    
-    function isAdmin() {
-      return isSignedIn() && getUserData().role == "admin";
-    }
-    
-    function isOrganizer() {
-      return isSignedIn() && getUserData().role == "organizer";
-    }
-    
-    function isOrganizerPending() {
-      return isSignedIn() && getUserData().role == "organizer_pending";
-    }
-    
-    // 사용자 데이터
-    match /users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      // 컬렉션 쿼리: 관리자만 모든 사용자 조회 가능
-      allow list: if isAdmin();
-    }
-    
-    // 관리자 설정
-    match /adminSettings/{document=**} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-    
+    rules_version = '2';
+    service cloud.firestore {
+    match /databases/{database}/documents {
+        
+        // 헬퍼 함수
+        function isSignedIn() {
+        return request.auth != null;
+        }
+        
+        function getUserData() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+        }
+        
+        function isAdmin() {
+        return isSignedIn() && (getUserData().role == "admin" || getUserData().role == "owner");
+        }
+        
+        function isOwner() {
+        return isSignedIn() && getUserData().role == "owner";
+        }
+        
+        function isOrganizer() {
+        return isSignedIn() && getUserData().role == "organizer";
+        }
+        
+        function isOrganizerPending() {
+        return isSignedIn() && getUserData().role == "organizer_pending";
+        }
+        
+        // 사용자 데이터
+        match /users/{userId} {
+        allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        allow create: if isSignedIn() && request.auth.uid == userId;
+        allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+        // 컬렉션 쿼리: 관리자만 모든 사용자 조회 가능
+        allow list: if isAdmin();
+        }
+        
+        // 관리자 설정
+        match /adminSettings/{document=**} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+        }
+        
     // Organizer 수수료율
     match /organizerCommissions/{organizerId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
     
-    // 상품
-    match /products/{productId} {
+    // 감사 로그 (읽기 전용, 시스템에서만 작성)
+    match /auditLogs/{logId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isAdmin();
-      // 컬렉션 쿼리 허용 (모든 로그인 사용자가 읽을 수 있음)
-      allow list: if isSignedIn();
+      allow write: if false; // 클라이언트에서 직접 작성 불가, 서버 함수에서만 작성
     }
-    
-    // 그룹
-    match /groups/{groupId} {
-      allow read: if isSignedIn();
-      allow create: if isOrganizer();
-      // 업데이트: Organizer(자신의 그룹), Admin, 또는 일반 사용자(주문 생성 시 currentTotal 업데이트용)
-      allow update: if (
-        (isOrganizer() && resource.data.organizerId == request.auth.uid) || 
-        isAdmin() ||
-        // 일반 사용자가 주문 생성 시 그룹의 currentTotal만 증가시킬 수 있음
-        (isSignedIn() && 
-         // currentTotal은 증가만 가능 (감소 불가)
-         request.resource.data.currentTotal >= resource.data.currentTotal &&
-         // 다른 필드는 변경 불가
-         request.resource.data.organizerId == resource.data.organizerId &&
-         request.resource.data.productId == resource.data.productId &&
-         request.resource.data.productName == resource.data.productName &&
-         request.resource.data.productPrice == resource.data.productPrice &&
-         request.resource.data.minimumTotal == resource.data.minimumTotal &&
-         request.resource.data.organizerName == resource.data.organizerName &&
-         // status는 '진행중'에서 '달성'으로만 변경 가능 (조건: currentTotal >= minimumTotal)
-         ((resource.data.status == '진행중' && 
-           request.resource.data.status == '달성' && 
-           request.resource.data.currentTotal >= request.resource.data.minimumTotal) ||
-          (request.resource.data.status == resource.data.status)))
-      );
-      
-      // 컬렉션 쿼리 허용 (모든 로그인 사용자가 읽을 수 있음)
-      allow list: if isSignedIn();
+        
+        // 상품
+        match /products/{productId} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isAdmin();
+        // 컬렉션 쿼리 허용 (모든 로그인 사용자가 읽을 수 있음)
+        allow list: if isSignedIn();
+        }
+        
+        // 그룹
+        match /groups/{groupId} {
+        allow read: if isSignedIn();
+        allow create: if isOrganizer();
+        // 업데이트: Organizer(자신의 그룹), Admin, 또는 일반 사용자(주문 생성 시 currentTotal 업데이트용, 닉네임 변경 시 organizerName 업데이트용)
+        allow update: if (
+            isAdmin() ||
+            // 진행자가 자신의 그룹에 주문 생성 시 그룹의 currentTotal 및 status 업데이트 가능
+            (isOrganizer() &&
+            resource.data.organizerId == request.auth.uid &&
+            // currentTotal은 증가/감소 모두 가능 (주문 생성 시 증가, 주문 수정 시 증가/감소)
+            request.resource.data.currentTotal is int &&
+            // updatedAt 필드는 변경 가능 (서버 타임스탬프)
+            (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp) &&
+            // 다른 필드는 변경 불가
+            request.resource.data.organizerId == resource.data.organizerId &&
+            request.resource.data.minimumTotal == resource.data.minimumTotal &&
+            request.resource.data.organizerName == resource.data.organizerName &&
+            request.resource.data.title == resource.data.title &&
+            // menuItems 배열이 있으면 동일해야 함 (새로운 구조)
+            ((!resource.data.menuItems && !request.resource.data.menuItems) ||
+            (resource.data.menuItems != null && request.resource.data.menuItems != null)) &&
+            // 하위 호환성: 기존 구조의 필드들도 체크 (있을 경우만)
+            ((!resource.data.productId && !request.resource.data.productId) ||
+            (resource.data.productId != null && request.resource.data.productId == resource.data.productId)) &&
+            ((!resource.data.productName && !request.resource.data.productName) ||
+            (resource.data.productName != null && request.resource.data.productName == resource.data.productName)) &&
+            ((!resource.data.productPrice && !request.resource.data.productPrice) ||
+            (resource.data.productPrice != null && request.resource.data.productPrice == resource.data.productPrice)) &&
+            // status는 '진행중'에서 '달성'으로 또는 '달성'에서 '진행중'으로 변경 가능
+            ((resource.data.status == '진행중' && 
+            request.resource.data.status == '달성' && 
+            request.resource.data.currentTotal >= request.resource.data.minimumTotal) ||
+            (resource.data.status == '달성' &&
+            request.resource.data.status == '진행중' &&
+            request.resource.data.currentTotal < resource.data.minimumTotal) ||
+            (request.resource.data.status == resource.data.status))) ||
+            // 일반 사용자가 주문 생성/수정 시 그룹의 currentTotal 업데이트 가능
+            (isSignedIn() && 
+            // currentTotal은 증가/감소 모두 가능 (주문 생성 시 증가, 주문 수정 시 증가/감소)
+            request.resource.data.currentTotal is int &&
+            // updatedAt 필드는 변경 가능 (서버 타임스탬프)
+            (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp) &&
+            // 다른 필드는 변경 불가
+            request.resource.data.organizerId == resource.data.organizerId &&
+            request.resource.data.minimumTotal == resource.data.minimumTotal &&
+            request.resource.data.organizerName == resource.data.organizerName &&
+            request.resource.data.title == resource.data.title &&
+            // menuItems 배열이 있으면 동일해야 함 (새로운 구조)
+            ((!resource.data.menuItems && !request.resource.data.menuItems) ||
+            (resource.data.menuItems != null && request.resource.data.menuItems != null)) &&
+            // 하위 호환성: 기존 구조의 필드들도 체크 (있을 경우만)
+            ((!resource.data.productId && !request.resource.data.productId) ||
+            (resource.data.productId != null && request.resource.data.productId == resource.data.productId)) &&
+            ((!resource.data.productName && !request.resource.data.productName) ||
+            (resource.data.productName != null && request.resource.data.productName == resource.data.productName)) &&
+            ((!resource.data.productPrice && !request.resource.data.productPrice) ||
+            (resource.data.productPrice != null && request.resource.data.productPrice == resource.data.productPrice)) &&
+            // status는 '진행중'에서 '달성'으로 또는 '달성'에서 '진행중'으로 변경 가능
+            // 또는 진행자가 자신의 그룹을 '달성'에서 '확정'으로 또는 '확정'에서 '달성'으로 변경 가능
+            ((resource.data.status == '진행중' && 
+            request.resource.data.status == '달성' && 
+            request.resource.data.currentTotal >= request.resource.data.minimumTotal) ||
+            (resource.data.status == '달성' &&
+            request.resource.data.status == '진행중' &&
+            request.resource.data.currentTotal < request.resource.data.minimumTotal) ||
+            (resource.data.status == '달성' &&
+            request.resource.data.status == '확정' &&
+            resource.data.organizerId == request.auth.uid &&
+            request.resource.data.currentTotal == resource.data.currentTotal) ||
+            (resource.data.status == '확정' &&
+            request.resource.data.status == '달성' &&
+            resource.data.organizerId == request.auth.uid &&
+            request.resource.data.currentTotal == resource.data.currentTotal) ||
+            (request.resource.data.status == resource.data.status))) ||
+            // Organizer가 자신이 생성한 그룹의 organizerName만 업데이트 (닉네임 변경 시)
+            (isSignedIn() && 
+            resource.data.organizerId == request.auth.uid &&
+            // organizerName만 변경 가능
+            request.resource.data.organizerName != resource.data.organizerName &&
+            // 다른 필드는 변경 불가
+            request.resource.data.organizerId == resource.data.organizerId &&
+            request.resource.data.minimumTotal == resource.data.minimumTotal &&
+            request.resource.data.currentTotal == resource.data.currentTotal &&
+            request.resource.data.title == resource.data.title &&
+            request.resource.data.status == resource.data.status &&
+            // menuItems 배열이 있으면 동일해야 함
+            ((!resource.data.menuItems && !request.resource.data.menuItems) ||
+            (resource.data.menuItems != null && request.resource.data.menuItems != null))) ||
+            // Organizer가 자신이 생성한 그룹의 상태를 '달성'에서 '확정'으로 또는 '확정'에서 '달성'으로 변경 가능
+            (isOrganizer() &&
+            resource.data.organizerId == request.auth.uid &&
+            // 다른 필드는 변경 불가
+            request.resource.data.organizerId == resource.data.organizerId &&
+            request.resource.data.minimumTotal == resource.data.minimumTotal &&
+            request.resource.data.currentTotal == resource.data.currentTotal &&
+            request.resource.data.organizerName == resource.data.organizerName &&
+            request.resource.data.title == resource.data.title &&
+            // menuItems 배열이 있으면 동일해야 함
+            ((!resource.data.menuItems && !request.resource.data.menuItems) ||
+            (resource.data.menuItems != null && request.resource.data.menuItems != null)) &&
+            // 상태 변경: '달성' <-> '확정'
+            ((resource.data.status == '달성' && request.resource.data.status == '확정') ||
+            (resource.data.status == '확정' && request.resource.data.status == '달성'))) ||
+            // 관리자가 배송 준비/완료 처리 가능
+            (isAdmin() &&
+            // 다른 필드는 변경 불가
+            request.resource.data.organizerId == resource.data.organizerId &&
+            request.resource.data.minimumTotal == resource.data.minimumTotal &&
+            request.resource.data.currentTotal == resource.data.currentTotal &&
+            request.resource.data.organizerName == resource.data.organizerName &&
+            request.resource.data.title == resource.data.title &&
+            // menuItems 배열이 있으면 동일해야 함
+            ((!resource.data.menuItems && !request.resource.data.menuItems) ||
+            (resource.data.menuItems != null && request.resource.data.menuItems != null)) &&
+            // 상태 변경: '확정' -> '배송중' 또는 '배송중' -> '완료'
+            ((resource.data.status == '확정' && request.resource.data.status == '배송중') ||
+            (resource.data.status == '배송중' && request.resource.data.status == '완료')))
+        );
+        // 삭제: 관리자만 가능하지만, 확정/배송중/완료 상태는 삭제 불가
+        allow delete: if isAdmin() && 
+            resource.data.status != '확정' && 
+            resource.data.status != '배송중' && 
+            resource.data.status != '완료';
+        
+        // 컬렉션 쿼리 허용 (모든 로그인 사용자가 읽을 수 있음)
+        allow list: if isSignedIn();
+        }
+        
+        // 주문
+        match /orders/{orderId} {
+        // 단일 문서 읽기
+        allow read: if isSignedIn() && (
+            resource.data.userId == request.auth.uid || 
+            isOrganizer() || 
+            isAdmin()
+        );
+        
+        // 컬렉션 쿼리 허용
+        // 모든 로그인 사용자가 조회 가능 (쿼리 필터로 제한됨)
+        // - 사용자는 where('userId', '==', userId)로 자신의 주문만 조회
+        // - Organizer는 where('groupId', '==', groupId)로 자신의 그룹 주문만 조회
+        // - Admin은 모든 주문 조회 가능
+        allow list: if isSignedIn();
+        
+        // 주문 생성: 로그인한 사용자는 주문 생성 가능 (최소 주문 금액 체크는 클라이언트/서버에서 처리)
+        allow create: if isSignedIn();
+        allow update: if isAdmin() || (
+            isOrganizer() && 
+            get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.organizerId == request.auth.uid
+        ) || (
+            // 사용자가 자신의 주문의 userName만 업데이트 가능 (닉네임 변경 시)
+            isSignedIn() &&
+            resource.data.userId == request.auth.uid &&
+            // userName만 변경 가능
+            request.resource.data.userName != resource.data.userName &&
+            // 다른 필드는 변경 불가
+            request.resource.data.userId == resource.data.userId &&
+            request.resource.data.groupId == resource.data.groupId &&
+            request.resource.data.productId == resource.data.productId &&
+            request.resource.data.productName == resource.data.productName &&
+            request.resource.data.quantity == resource.data.quantity &&
+            request.resource.data.unitPrice == resource.data.unitPrice &&
+            request.resource.data.totalPrice == resource.data.totalPrice &&
+            request.resource.data.status == resource.data.status
+        ) || (
+            // 사용자가 자신의 주문완료 상태 주문 수정 가능 (quantity, unitPrice, totalPrice, updatedAt 변경)
+            isSignedIn() &&
+            resource.data.userId == request.auth.uid &&
+            resource.data.status == '주문완료' &&
+            request.resource.data.status == '주문완료' &&
+            // userId, groupId, productId, productName은 변경 불가
+            request.resource.data.userId == resource.data.userId &&
+            request.resource.data.groupId == resource.data.groupId &&
+            request.resource.data.productId == resource.data.productId &&
+            request.resource.data.productName == resource.data.productName &&
+            // quantity, unitPrice, totalPrice는 변경 가능
+            request.resource.data.quantity is int &&
+            request.resource.data.unitPrice is int &&
+            request.resource.data.totalPrice is int &&
+            request.resource.data.totalPrice == request.resource.data.quantity * request.resource.data.unitPrice &&
+            // updatedAt 필드는 변경 가능 (서버 타임스탬프)
+            (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp)
+        ) || (
+            // 사용자가 자신의 주문완료 상태 주문의 updatedAt만 업데이트 가능 (개별 상품 삭제 시 같은 주문건의 다른 주문들도 업데이트)
+            isSignedIn() &&
+            resource.data.userId == request.auth.uid &&
+            resource.data.status == '주문완료' &&
+            request.resource.data.status == '주문완료' &&
+            // 모든 필드가 동일하고 updatedAt만 변경되는 경우
+            request.resource.data.userId == resource.data.userId &&
+            request.resource.data.groupId == resource.data.groupId &&
+            request.resource.data.productId == resource.data.productId &&
+            request.resource.data.productName == resource.data.productName &&
+            request.resource.data.quantity == resource.data.quantity &&
+            request.resource.data.unitPrice == resource.data.unitPrice &&
+            request.resource.data.totalPrice == resource.data.totalPrice &&
+            // updatedAt 필드는 변경 가능 (서버 타임스탬프)
+            request.resource.data.updatedAt is timestamp
+        );
+        // 주문 삭제: Organizer(자신의 그룹), Admin, 또는 사용자가 자신의 주문완료 상태 주문 삭제
+        allow delete: if isAdmin() || (
+            isOrganizer() && 
+            get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.organizerId == request.auth.uid
+        ) || (
+            isSignedIn() &&
+            resource.data.userId == request.auth.uid &&
+            resource.data.status == '주문완료'
+        );
+        }
+        
+        // 알림
+        match /notifications/{notificationId} {
+        // 사용자는 자신의 알림만 읽을 수 있음
+        allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+        // 컬렉션 쿼리: 사용자는 자신의 알림만 조회 가능
+        allow list: if isSignedIn() && request.query.limit(20).where('userId', '==', request.auth.uid);
+        // 알림 생성: 관리자만 가능 (상품 변경, 공동구매 상태 변경 시)
+        allow create: if isAdmin();
+        // 알림 업데이트: 사용자는 자신의 알림만 읽음 처리 가능
+        allow update: if isSignedIn() && resource.data.userId == request.auth.uid && 
+            request.resource.data.read == true && 
+            request.resource.data.userId == resource.data.userId &&
+            request.resource.data.type == resource.data.type &&
+            request.resource.data.title == resource.data.title &&
+            request.resource.data.message == resource.data.message;
+        }
+        
+        // 사용자 공동구매 접속 기록
+        match /userGroupVisits/{visitId} {
+        // 읽기: 로그인한 사용자는 읽기 가능 (문서가 존재하지 않거나 자신의 문서인 경우)
+        // getDoc 호출 시 문서가 없어도 읽기 시도가 가능하도록 허용
+        allow read: if isSignedIn();
+        // 컬렉션 쿼리: 로그인한 사용자는 조회 가능 (쿼리에서 where('userId', '==', userId) 필터 사용)
+        // 각 문서에 대한 read 권한이 체크됨
+        allow list: if isSignedIn();
+        // 생성: 자신의 접속 기록만 생성 가능
+        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+        // 업데이트: 자신의 접속 기록만 업데이트 가능
+        allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+        // 삭제: 자신의 접속 기록만 삭제 가능
+        allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+        }
     }
-    
-    // 주문
-    match /orders/{orderId} {
-      // 단일 문서 읽기
-      allow read: if isSignedIn() && (
-        resource.data.userId == request.auth.uid || 
-        isOrganizer() || 
-        isAdmin()
-      );
-      
-      // 컬렉션 쿼리 허용
-      // 모든 로그인 사용자가 조회 가능 (쿼리 필터로 제한됨)
-      // - 사용자는 where('userId', '==', userId)로 자신의 주문만 조회
-      // - Organizer는 where('groupId', '==', groupId)로 자신의 그룹 주문만 조회
-      // - Admin은 모든 주문 조회 가능
-      allow list: if isSignedIn();
-      
-      allow create: if isSignedIn() && request.resource.data.totalPrice >= 10000;
-      allow update: if isAdmin() || (
-        isOrganizer() && 
-        get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.organizerId == request.auth.uid
-      );
-      // 주문 삭제: Organizer(자신의 그룹) 또는 Admin만 가능
-      allow delete: if isAdmin() || (
-        isOrganizer() && 
-        get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.organizerId == request.auth.uid
-      );
     }
-  }
-}
 

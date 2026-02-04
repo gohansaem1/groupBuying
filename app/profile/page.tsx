@@ -89,26 +89,47 @@ export default function ProfilePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!available || !nickname.trim()) {
-      setError('사용 가능한 닉네임을 확인해주세요.')
+    const trimmedNickname = nickname.trim()
+    
+    if (!trimmedNickname) {
+      setError('닉네임을 입력해주세요.')
+      return
+    }
+
+    if (trimmedNickname.length < 2 || trimmedNickname.length > 20) {
+      setError('닉네임은 2자 이상 20자 이하여야 합니다.')
       return
     }
 
     // 현재 닉네임과 같으면 변경 불필요
-    if (userProfile?.nickname === nickname.trim()) {
+    if (userProfile?.nickname === trimmedNickname) {
       setError('변경된 내용이 없습니다.')
       return
+    }
+
+    // 중복 확인이 안 되어 있으면 자동으로 확인
+    if (available === null || available === false) {
+      await checkNickname()
+      // 중복 확인 후 다시 확인
+      if (available === null || available === false) {
+        setError('사용 가능한 닉네임을 확인해주세요.')
+        return
+      }
     }
 
     setSubmitting(true)
     setError(null)
 
     try {
-      await setNickname(nickname.trim(), userProfile?.nickname)
+      await setNickname(trimmedNickname, userProfile?.nickname)
       const updatedProfile = await getCurrentUserProfile()
       setUserProfile(updatedProfile)
-      alert('닉네임이 변경되었습니다.')
-      router.push('/')
+      // 성공 후 이전 페이지로 돌아가거나 홈으로 이동
+      if (window.history.length > 1) {
+        router.back()
+      } else {
+        router.push('/')
+      }
     } catch (err: any) {
       setError(err.message || '닉네임 변경에 실패했습니다.')
       setSubmitting(false)
@@ -233,7 +254,7 @@ export default function ProfilePage() {
               <div className="flex gap-2">
                 <button
                   type="submit"
-                  disabled={!available || submitting || nickname.trim() === userProfile.nickname}
+                  disabled={submitting || !nickname.trim() || nickname.trim() === userProfile.nickname}
                   className="flex-1 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/50"
                 >
                   {submitting ? '변경 중...' : '닉네임 변경'}

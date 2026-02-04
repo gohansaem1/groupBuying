@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { signInWithKakao, signInWithTestUser } from '@/lib/firebase/auth'
+import { signInWithKakao, signInWithTestUser, getCurrentUserProfile, agreeToUserTerms } from '@/lib/firebase/auth'
 import { initKakao, waitForKakaoSDK } from '@/lib/firebase/kakao'
+import TermsAgreementModal from '@/components/TermsAgreementModal'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -15,6 +16,8 @@ export default function LoginPage() {
   const [sdkReady, setSdkReady] = useState(false)
   const [testMode, setTestMode] = useState(false)
   const [testUserId, setTestUserId] = useState('')
+  const [showTermsModal, setShowTermsModal] = useState(false)
+  const [pendingRedirect, setPendingRedirect] = useState<string | null>(null)
 
   useEffect(() => {
     // 카카오 SDK 초기화
@@ -46,19 +49,53 @@ export default function LoginPage() {
     try {
       await signInWithKakao()
       
-      // 닉네임 확인
-      const { getCurrentUserProfile } = await import('@/lib/firebase/auth')
+      // 프로필 확인
       const profile = await getCurrentUserProfile()
       
-      // 닉네임이 없으면 닉네임 설정 페이지로
-      if (!profile?.nickname) {
-        router.push('/setup-nickname')
-      } else {
-        // returnUrl이 있으면 해당 페이지로, 없으면 홈으로
-        router.push(returnUrl)
+      // 일반 사용자 동의 여부 확인 (진행자가 아닌 경우)
+      if (profile && (!profile.role || profile.role === 'user' || profile.role === 'organizer_pending')) {
+        if (!profile.userAgreedToTerms) {
+          // 동의하지 않은 경우 모달 표시
+          setShowTermsModal(true)
+          setPendingRedirect(returnUrl)
+          setLoading(false)
+          return
+        }
       }
+      
+      // 동의한 경우 정상 진행
+      handlePostLogin(profile)
     } catch (err: any) {
       setError(err.message || '로그인에 실패했습니다.')
+      setLoading(false)
+    }
+  }
+
+  const handlePostLogin = (profile: any) => {
+    // 닉네임이 없으면 닉네임 설정 페이지로
+    if (!profile?.nickname) {
+      router.push('/setup-nickname')
+    } else {
+      // returnUrl이 있으면 해당 페이지로, 없으면 홈으로
+      router.push(pendingRedirect || returnUrl)
+    }
+  }
+
+  const handleTermsAgree = async () => {
+    try {
+      setLoading(true)
+      
+      // 일반 사용자 약관 동의 처리
+      await agreeToUserTerms()
+
+      // 프로필 다시 가져오기
+      const profile = await getCurrentUserProfile()
+      setShowTermsModal(false)
+      
+      // 정상 진행
+      handlePostLogin(profile)
+    } catch (err: any) {
+      setError(err.message || '동의 처리에 실패했습니다.')
       setLoading(false)
     }
   }
@@ -75,9 +112,14 @@ export default function LoginPage() {
     try {
       const { userInfo } = await signInWithTestUser(testUserId.trim())
       
-      // 로그인 정보 표시
-      const infoMessage = `로그인 성공!\n\n사용자 정보:\n- UID: ${userInfo.uid}\n- 닉네임: ${userInfo.nickname || '없음'}\n- 이름: ${userInfo.displayName || '없음'}\n- 이메일: ${userInfo.email || '없음'}\n- 역할: ${userInfo.role || 'user'}`
-      alert(infoMessage)
+      // 로그인 정보를 콘솔에만 출력 (팝업 제거)
+      console.log('로그인 성공!', {
+        uid: userInfo.uid,
+        nickname: userInfo.nickname || '없음',
+        displayName: userInfo.displayName || '없음',
+        email: userInfo.email || '없음',
+        role: userInfo.role || 'user'
+      })
       
       // 닉네임이 없으면 닉네임 설정 페이지로
       if (!userInfo.nickname) {
@@ -171,6 +213,17 @@ export default function LoginPage() {
           )}
         </div>
       </div>
+
+      {showTermsModal && (
+        <TermsAgreementModal
+          onAgree={handleTermsAgree}
+          onClose={() => {
+            setShowTermsModal(false)
+            setPendingRedirect(null)
+            setLoading(false)
+          }}
+        />
+      )}
     </div>
   )
 }

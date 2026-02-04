@@ -139,3 +139,5 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFA
 - `\n`이 포함되어 있는지 확인
 - JSON 파일에서 복사할 때 전체 키를 복사했는지 확인
 
+
+

@@ -121,3 +121,5 @@ function isSignedIn() {
 
 이 프로젝트는 카카오 로그인을 사용하지만, Firebase Authentication을 통해 사용자를 관리합니다.
 
+
+

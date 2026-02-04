@@ -164,7 +164,7 @@ export async function signInWithKakaoSDK() {
     const userSnap = await getDoc(userRef)
 
     if (!userSnap.exists()) {
-      // 새 사용자 생성 (nickname은 null로 시작)
+      // 새 사용자 생성 (nickname은 null로 시작, 동의는 false로 시작)
       const newUser: UserProfile = {
         uid: user.uid,
         email: user.email,
@@ -172,6 +172,8 @@ export async function signInWithKakaoSDK() {
         nickname: null, // 닉네임은 별도 설정 필요
         photoURL: user.photoURL,
         role: 'user',
+        userAgreedToTerms: false, // 일반 사용자 동의는 아직 하지 않음
+        organizerAgreedToTerms: false, // 진행자 동의는 아직 하지 않음
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }

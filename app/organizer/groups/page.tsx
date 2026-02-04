@@ -109,7 +109,7 @@ export default function OrganizerGroupsPage() {
                 const groupOrders = getGroupOrdersForGroup(group.id)
                 const totalAmount = getTotalAmount(groupOrders)
                 const progress = group.minimumTotal > 0 
-                  ? Math.min((group.currentTotal / group.minimumTotal) * 100, 100)
+                  ? (group.currentTotal / group.minimumTotal) * 100
                   : 0
 
                 return (
@@ -125,7 +125,7 @@ export default function OrganizerGroupsPage() {
                             <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                               group.status === '진행중' ? 'bg-blue-100 text-blue-800' :
                               group.status === '달성' ? 'bg-yellow-100 text-yellow-800' :
-                              group.status === '확인완료' ? 'bg-purple-100 text-purple-800' :
+                              group.status === '확정' ? 'bg-purple-100 text-purple-800' :
                               group.status === '배송중' ? 'bg-indigo-100 text-indigo-800' :
                               'bg-green-100 text-green-800'
                             }`}>
@@ -187,7 +187,7 @@ export default function OrganizerGroupsPage() {
                                   <p className="font-semibold text-gray-900">{order.totalPrice.toLocaleString()}원</p>
                                   <span className={`px-2 py-0.5 rounded-full text-xs ${
                                     order.status === '주문완료' ? 'bg-blue-100 text-blue-800' :
-                                    order.status === '확인완료' ? 'bg-purple-100 text-purple-800' :
+                                    order.status === '확정' ? 'bg-purple-100 text-purple-800' :
                                     order.status === '배송중' ? 'bg-indigo-100 text-indigo-800' :
                                     'bg-green-100 text-green-800'
                                   }`}>

@@ -27,3 +27,5 @@ if (typeof window !== 'undefined') {
 
 export { auth, db }
 
+
+

@@ -141,7 +141,7 @@ export default function OrganizerOrdersPage() {
                       </div>
                       <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap self-start sm:self-auto ${
                         order.status === '주문완료' ? 'bg-blue-100 text-blue-800' :
-                        order.status === '확인완료' ? 'bg-purple-100 text-purple-800' :
+                        order.status === '확정' ? 'bg-purple-100 text-purple-800' :
                         order.status === '배송중' ? 'bg-indigo-100 text-indigo-800' :
                         'bg-green-100 text-green-800'
                       }`}>

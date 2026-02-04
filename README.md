@@ -15,7 +15,8 @@ Next.js 기반 공동구매 웹앱
 
 1. **환경 변수 파일 생성**
    - 프로젝트 루트에 `.env.local` 파일 생성
-   - `QUICK_START.md` 또는 `STEP_BY_STEP_SETUP.md` 참고
+   - `env.local.example` 파일을 참고하여 필요한 환경 변수 설정
+   - 상세 설정은 `STEP_BY_STEP_SETUP.md` 참고
 
 2. **개발 서버 실행**
    ```bash
@@ -26,11 +27,15 @@ Next.js 기반 공동구매 웹앱
 3. **브라우저 접속**
    - http://localhost:3000 접속
 
-### 상세 설정 가이드
+### 설정 가이드
 
 - **`STEP_BY_STEP_SETUP.md`**: 차근차근 단계별 설정 가이드 (추천!)
 - **`QUICK_START.md`**: 빠른 시작 가이드
 - **`ENV_SETUP.md`**: 환경 변수 상세 설명
+- **`FIREBASE_SETUP.md`**: Firebase 프로젝트 설정 가이드
+- **`FIREBASE_AUTH_SETUP.md`**: Firebase 인증 설정 가이드
+- **`KAKAO_PLATFORM_SETUP.md`**: 카카오 플랫폼 설정 가이드
+- **`KAKAO_WEBHOOK_SETUP.md`**: 카카오 웹훅 설정 가이드
 
 ## 주요 기능
 
@@ -38,7 +43,8 @@ Next.js 기반 공동구매 웹앱
 - **user**: 일반 사용자, 상품 주문 가능
 - **organizer_pending**: Organizer 신청 대기 중
 - **organizer**: Organizer, 그룹 생성 및 관리 가능
-- **admin**: 관리자, 모든 기능 접근 가능
+- **admin**: 관리자, 모든 기능 접근 가능 (공동구매 건 생성 불가)
+- **owner**: 최고 관리자, 모든 기능 접근 가능 (Organizer를 Admin으로 승격 가능)
 
 ### 핵심 비즈니스 규칙
 1. 모든 사용자는 카카오 로그인 필수
