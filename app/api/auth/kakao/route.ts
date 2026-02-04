@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    console.log('[카카오 API] 1단계: 카카오 사용자 정보 요청 시작')
     // 카카오 API로 사용자 정보 가져오기
     const kakaoUserResponse = await fetch('https://kapi.kakao.com/v2/user/me', {
       headers: {
@@ -119,10 +120,12 @@ export async function POST(request: NextRequest) {
     const displayName = kakaoUser.kakao_account?.profile?.nickname || '사용자'
     const photoURL = kakaoUser.kakao_account?.profile?.profile_image_url || null
 
+    console.log('[카카오 API] 1단계 완료: 카카오 사용자 정보 수신', { kakaoId, email, displayName })
+
     // Firebase 사용자 UID 생성 (카카오 ID 기반)
     const uid = `kakao_${kakaoId}`
 
-    console.log('Firebase 사용자 처리 시작:', { uid, kakaoId, email, displayName })
+    console.log('[카카오 API] 2단계: Firebase 사용자 처리 시작:', { uid, kakaoId, email, displayName })
 
     // Firebase Custom Token 생성
     let customToken: string
@@ -161,8 +164,9 @@ export async function POST(request: NextRequest) {
       }
 
       // Custom Token 생성
+      console.log('[카카오 API] 3단계: Firebase Custom Token 생성 시작')
       customToken = await adminAuth.createCustomToken(uid)
-      console.log('Custom Token 생성 완료')
+      console.log('[카카오 API] 3단계 완료: Custom Token 생성 완료')
 
       // 사용자 정보 업데이트 (기존 사용자인 경우)
       if (user) {

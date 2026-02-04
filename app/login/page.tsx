@@ -39,47 +39,49 @@ export default function LoginPage() {
 
   const handleKakaoLogin = async () => {
     if (!sdkReady) {
-      setError('카카오 SDK가 준비되지 않았습니다.')
+      setError('카카오 SDK가 준비되지 않았습니다. .env.local에 NEXT_PUBLIC_KAKAO_JS_KEY가 설정되어 있는지 확인해 주세요.')
       return
     }
 
     setLoading(true)
     setError(null)
-    
+
+    const LOGIN_TIMEOUT_MS = 40000 // 40초 (카카오 로그인 + Firebase 인증 + 프로필 처리 시간 고려)
+
     try {
+      console.log('[로그인 페이지] 카카오 로그인 시작')
       await signInWithKakao()
+      console.log('[로그인 페이지] 카카오 로그인 완료')
       
-      // 프로필 확인
-      const profile = await getCurrentUserProfile()
+      // 로그인 성공 후 즉시 리다이렉트 (프로필은 리다이렉트된 페이지에서 처리)
+      // 리다이렉트가 일어나면 이 컴포넌트가 언마운트되므로, 이후 코드는 실행되지 않을 수 있음
+      console.log('[로그인 페이지] 리다이렉트 시작')
       
-      // 일반 사용자 동의 여부 확인 (진행자가 아닌 경우)
-      if (profile && (!profile.role || profile.role === 'user' || profile.role === 'organizer_pending')) {
-        if (!profile.userAgreedToTerms) {
-          // 동의하지 않은 경우 모달 표시
-          setShowTermsModal(true)
-          setPendingRedirect(returnUrl)
-          setLoading(false)
-          return
+      // returnUrl이 있으면 해당 페이지로, 없으면 홈으로
+      router.push(returnUrl)
+      
+      // 리다이렉트 후에도 약간의 시간을 두고 프로필 확인 시도 (선택사항)
+      // 하지만 리다이렉트가 일어나면 이 코드는 실행되지 않을 수 있음
+      setTimeout(async () => {
+        try {
+          const profile = await getCurrentUserProfile()
+          console.log('[로그인 페이지] 프로필 확인 완료 (리다이렉트 후)', profile)
+          
+          // 프로필이 있고 약관 동의가 필요한 경우, 홈 페이지에서 처리하도록 함
+          // (홈 페이지의 useEffect에서 처리됨)
+        } catch (err) {
+          console.warn('[로그인 페이지] 프로필 확인 실패 (리다이렉트 후, 무시 가능)', err)
         }
-      }
+      }, 100)
       
-      // 동의한 경우 정상 진행
-      handlePostLogin(profile)
     } catch (err: any) {
-      setError(err.message || '로그인에 실패했습니다.')
+      const message = err.message || '로그인에 실패했습니다.'
+      setError(message)
       setLoading(false)
     }
   }
 
-  const handlePostLogin = (profile: any) => {
-    // 닉네임이 없으면 닉네임 설정 페이지로
-    if (!profile?.nickname) {
-      router.push('/setup-nickname')
-    } else {
-      // returnUrl이 있으면 해당 페이지로, 없으면 홈으로
-      router.push(pendingRedirect || returnUrl)
-    }
-  }
+  // handlePostLogin 제거 - 리다이렉트 후 홈 페이지에서 처리
 
   const handleTermsAgree = async () => {
     try {

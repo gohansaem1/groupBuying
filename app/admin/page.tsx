@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import AuthGuard from '@/components/AuthGuard'
 import { getAllProducts, createProduct, updateProduct, deleteProduct, Product } from '@/lib/firebase/products'
-import { getOrganizerRecruitmentStatus, setOrganizerRecruitmentStatus, getAllUsers, updateUserRole, getPendingOrganizers, getOrganizerCommissionRate, setOrganizerCommissionRate, promoteOrganizerToAdmin } from '@/lib/firebase/admin'
+import { getOrganizerRecruitmentStatus, setOrganizerRecruitmentStatus, getAllUsers, updateUserRole, getPendingOrganizers, getOrganizerCommissionRate, setOrganizerCommissionRate, promoteOrganizerToAdmin, getDefaultCommissionRate, setDefaultCommissionRate, deleteOrganizerCommissionRate } from '@/lib/firebase/admin'
 import { UserProfile, getCurrentUserProfile, UserRole } from '@/lib/firebase/auth'
 import { getAllGroups, Group, Order, getGroupOrders, confirmGroup, cancelConfirmGroup, updateDeliveryDetailStatus } from '@/lib/firebase/groups'
-import { Timestamp, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { Timestamp, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase/config'
 import { markShipping, markComplete } from '@/lib/firebase/groups'
 import { useRouter } from 'next/navigation'
@@ -856,6 +856,12 @@ function UsersTab({ onUpdate }: { onUpdate: () => void }) {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
   const [editingRole, setEditingRole] = useState<string | null>(null)
   const [newRole, setNewRole] = useState<UserRole>('user')
+  const [commissionRates, setCommissionRates] = useState<Map<string, number>>(new Map()) // 진행자별 수수료율 (개별 설정된 경우만)
+  const [hasCustomCommission, setHasCustomCommission] = useState<Set<string>>(new Set()) // 개별 수수료율이 설정된 진행자 ID 목록
+  const [defaultCommissionRate, setDefaultCommissionRate] = useState<number>(10) // 기본 수수료율
+  const [editingCommission, setEditingCommission] = useState<string | null>(null) // 수정 중인 진행자 ID
+  const [commissionInputs, setCommissionInputs] = useState<Map<string, number>>(new Map()) // 수수료율 입력값
+  const [selectedApplication, setSelectedApplication] = useState<string | null>(null) // 선택된 신청 정보
 
   useEffect(() => {
     loadUsers()
@@ -872,6 +878,35 @@ function UsersTab({ onUpdate }: { onUpdate: () => void }) {
       setUsers(allUsers)
       setPendingOrganizers(pending)
       setCurrentUser(profile)
+      
+      // 기본 수수료율 로드
+      const defaultRate = await getDefaultCommissionRate()
+      setDefaultCommissionRate(defaultRate)
+      
+      // 진행자별 수수료율 로드 (개별 설정된 경우만)
+      const organizers = allUsers.filter(u => u.role === 'organizer')
+      const ratesMap = new Map<string, number>()
+      const customSet = new Set<string>()
+      
+      await Promise.all(
+        organizers.map(async (organizer) => {
+          try {
+            // 개별 수수료율이 있는지 확인
+            const commissionRef = doc(db, 'organizerCommissions', organizer.uid)
+            const commissionSnap = await getDoc(commissionRef)
+            
+            if (commissionSnap.exists() && commissionSnap.data().rate !== undefined && commissionSnap.data().rate !== null) {
+              // 개별 수수료율이 설정되어 있음
+              ratesMap.set(organizer.uid, commissionSnap.data().rate)
+              customSet.add(organizer.uid)
+            }
+          } catch (error) {
+            console.error(`진행자 ${organizer.uid} 수수료율 로드 실패:`, error)
+          }
+        })
+      )
+      setCommissionRates(ratesMap)
+      setHasCustomCommission(customSet)
     } catch (error) {
       console.error('사용자 로드 오류:', error)
     } finally {
@@ -1053,13 +1088,14 @@ function UsersTab({ onUpdate }: { onUpdate: () => void }) {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">이름</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">이메일</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">역할</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수수료율</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">작업</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {displayUsers.map((user) => (
-              <>
-                <tr key={user.uid}>
+              <React.Fragment key={user.uid}>
+                <tr>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{user.nickname || user.displayName || '이름 없음'}</div>
                     {user.organizerApplication && (
@@ -1090,6 +1126,120 @@ function UsersTab({ onUpdate }: { onUpdate: () => void }) {
                        user.role === 'organizer_pending' ? '승인 대기' :
                        '사용자'}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    {user.role === 'organizer' ? (
+                      editingCommission === user.uid ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={commissionInputs.get(user.uid) ?? commissionRates.get(user.uid) ?? defaultCommissionRate}
+                            onChange={(e) => {
+                              const newInputs = new Map(commissionInputs)
+                              newInputs.set(user.uid, Number(e.target.value))
+                              setCommissionInputs(newInputs)
+                            }}
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            className="w-20 border rounded px-2 py-1 text-sm"
+                          />
+                          <span className="text-xs text-gray-500">%</span>
+                          <button
+                            onClick={async () => {
+                              const rate = commissionInputs.get(user.uid) ?? commissionRates.get(user.uid) ?? defaultCommissionRate
+                              if (rate < 0 || rate > 100) {
+                                alert('수수료율은 0%에서 100% 사이여야 합니다.')
+                                return
+                              }
+                              try {
+                                await setOrganizerCommissionRate(user.uid, rate)
+                                const newRates = new Map(commissionRates)
+                                newRates.set(user.uid, rate)
+                                setCommissionRates(newRates)
+                                const newCustomSet = new Set(hasCustomCommission)
+                                newCustomSet.add(user.uid)
+                                setHasCustomCommission(newCustomSet)
+                                setEditingCommission(null)
+                                alert('수수료율이 업데이트되었습니다.')
+                              } catch (error: any) {
+                                alert(error.message || '수수료율 업데이트에 실패했습니다.')
+                              }
+                            }}
+                            className="text-blue-600 hover:text-blue-900 text-xs"
+                          >
+                            저장
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingCommission(null)
+                              const newInputs = new Map(commissionInputs)
+                              newInputs.delete(user.uid)
+                              setCommissionInputs(newInputs)
+                            }}
+                            className="text-gray-600 hover:text-gray-900 text-xs"
+                          >
+                            취소
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">
+                            {hasCustomCommission.has(user.uid) ? (
+                              <>
+                                {commissionRates.get(user.uid)}% <span className="text-xs text-gray-500">(개별 설정)</span>
+                              </>
+                            ) : (
+                              <>
+                                {defaultCommissionRate}% <span className="text-xs text-gray-500">(기본값)</span>
+                              </>
+                            )}
+                          </span>
+                          {isAdmin && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => {
+                                  setEditingCommission(user.uid)
+                                  const newInputs = new Map(commissionInputs)
+                                  newInputs.set(user.uid, commissionRates.get(user.uid) ?? defaultCommissionRate)
+                                  setCommissionInputs(newInputs)
+                                }}
+                                className="text-blue-600 hover:text-blue-900 text-xs"
+                              >
+                                {hasCustomCommission.has(user.uid) ? '수정' : '설정'}
+                              </button>
+                              {hasCustomCommission.has(user.uid) && (
+                                <button
+                                  onClick={async () => {
+                                    if (!confirm('개별 수수료율을 삭제하고 기본 수수료율을 사용하시겠습니까?')) {
+                                      return
+                                    }
+                                    try {
+                                      await deleteOrganizerCommissionRate(user.uid)
+                                      const newRates = new Map(commissionRates)
+                                      newRates.delete(user.uid)
+                                      setCommissionRates(newRates)
+                                      const newCustomSet = new Set(hasCustomCommission)
+                                      newCustomSet.delete(user.uid)
+                                      setHasCustomCommission(newCustomSet)
+                                      alert('개별 수수료율이 삭제되었습니다. 기본 수수료율을 사용합니다.')
+                                    } catch (error: any) {
+                                      alert(error.message || '수수료율 삭제에 실패했습니다.')
+                                    }
+                                  }}
+                                  className="text-red-600 hover:text-red-900 text-xs"
+                                  title="개별 수수료율 삭제 (기본값 사용)"
+                                >
+                                  삭제
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     {user.role === 'organizer_pending' && (
@@ -1178,7 +1328,7 @@ function UsersTab({ onUpdate }: { onUpdate: () => void }) {
               </tr>
                 {user.role === 'organizer_pending' && selectedApplication === user.uid && user.organizerApplication && (
                   <tr>
-                    <td colSpan={4} className="px-6 py-4 bg-gray-50">
+                    <td colSpan={5} className="px-6 py-4 bg-gray-50">
                       <div className="bg-white rounded-lg p-4 border border-gray-200">
                         <h3 className="font-semibold mb-3">진행자 신청 정보</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -1213,7 +1363,7 @@ function UsersTab({ onUpdate }: { onUpdate: () => void }) {
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             ))}
           </tbody>
         </table>
@@ -1229,7 +1379,7 @@ function SettingsTab({
   organizerRecruitmentEnabled: boolean
   onUpdate: () => void
 }) {
-  const [commissionRate, setCommissionRate] = useState<number>(10)
+  const [defaultCommissionRate, setDefaultCommissionRateState] = useState<number>(10)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -1239,8 +1389,9 @@ function SettingsTab({
   const loadSettings = async () => {
     setLoading(true)
     try {
-      // 기본 수수료율은 10%로 설정
-      setCommissionRate(10)
+      // 기본 수수료율 로드
+      const defaultRate = await getDefaultCommissionRate()
+      setDefaultCommissionRateState(defaultRate)
     } catch (error) {
       console.error('설정 로드 오류:', error)
     } finally {
@@ -1258,13 +1409,19 @@ function SettingsTab({
     }
   }
 
-  const handleUpdateCommissionRate = async () => {
+  const handleUpdateDefaultCommissionRate = async () => {
     try {
-      // 수수료율은 진행자별로 설정되므로, 여기서는 안내만 표시
-      alert('수수료율은 각 진행자별로 개별 설정됩니다. 기본값은 10%입니다.')
-    } catch (error) {
-      console.error('수수료율 업데이트 오류:', error)
-      alert('수수료율 업데이트에 실패했습니다.')
+      if (defaultCommissionRate < 0 || defaultCommissionRate > 100) {
+        alert('수수료율은 0%에서 100% 사이여야 합니다.')
+        return
+      }
+      
+      await setDefaultCommissionRate(defaultCommissionRate)
+      alert('기본 수수료율이 업데이트되었습니다.\n\n참고: 이미 개별 수수료율이 설정된 진행자는 변경되지 않습니다.')
+      onUpdate()
+    } catch (error: any) {
+      console.error('기본 수수료율 업데이트 오류:', error)
+      alert(error.message || '기본 수수료율 업데이트에 실패했습니다.')
     }
   }
 
@@ -1298,27 +1455,28 @@ function SettingsTab({
       </div>
 
       <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">진행자 수수료율 설정</h3>
+        <h3 className="text-lg font-semibold mb-4">기본 수수료율 설정</h3>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">수수료율 (%)</label>
+            <label className="block text-sm font-medium mb-2">기본 수수료율 (%)</label>
             <input
               type="number"
-              value={commissionRate}
-              onChange={(e) => setCommissionRate(Number(e.target.value))}
+              value={defaultCommissionRate}
+              onChange={(e) => setDefaultCommissionRateState(Number(e.target.value))}
               min="0"
               max="100"
+              step="0.1"
               className="w-full border rounded-lg px-3 py-2"
             />
             <p className="text-xs text-gray-500 mt-1">
-              완료된 공동구매 건의 주문 총액에서 진행자가 받을 수수료 비율입니다.
+              새로 생성되는 진행자에게 적용되는 기본 수수료율입니다. 이미 개별 수수료율이 설정된 진행자는 변경되지 않습니다.
             </p>
           </div>
           <button
-            onClick={handleUpdateCommissionRate}
+            onClick={handleUpdateDefaultCommissionRate}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
           >
-            수수료율 업데이트
+            기본 수수료율 업데이트
           </button>
         </div>
       </div>

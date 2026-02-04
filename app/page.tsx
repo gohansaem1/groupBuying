@@ -39,7 +39,12 @@ export default function Home() {
       setLoading(false)
     })
 
-    return () => unsubscribe()
+    // Firebase 응답이 느릴 때 4초 후 로딩 해제 (접속 지연 완화)
+    const fallbackTimer = setTimeout(() => setLoading(false), 4000)
+    return () => {
+      unsubscribe()
+      clearTimeout(fallbackTimer)
+    }
   }, [router])
 
   // 리다이렉트 제거 - 모든 사용자가 홈 페이지에 접근 가능

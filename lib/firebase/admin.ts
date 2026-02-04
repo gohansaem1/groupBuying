@@ -1,9 +1,10 @@
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, getDocs, query, where } from 'firebase/firestore'
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from './config'
 import { UserProfile } from './auth'
 
 export interface AdminSettings {
   organizerRecruitmentEnabled: boolean
+  defaultCommissionRate?: number // 기본 수수료율 (기본값: 10%)
   updatedAt: any
 }
 
@@ -80,16 +81,47 @@ export async function getPendingOrganizers(): Promise<UserProfile[]> {
   } as UserProfile))
 }
 
-// 진행자 수수료율 조회
+// 기본 수수료율 조회
+export async function getDefaultCommissionRate(): Promise<number> {
+  const settingsRef = doc(db, 'adminSettings', 'main')
+  const settingsSnap = await getDoc(settingsRef)
+  
+  if (settingsSnap.exists()) {
+    const data = settingsSnap.data()
+    return data.defaultCommissionRate || 10 // 기본값 10%
+  }
+  
+  return 10 // 기본값 10%
+}
+
+// 기본 수수료율 설정 (관리자만)
+export async function setDefaultCommissionRate(rate: number): Promise<void> {
+  if (rate < 0 || rate > 100) {
+    throw new Error('수수료율은 0%에서 100% 사이여야 합니다.')
+  }
+  
+  const settingsRef = doc(db, 'adminSettings', 'main')
+  await setDoc(settingsRef, {
+    defaultCommissionRate: rate,
+    updatedAt: serverTimestamp(),
+  }, { merge: true })
+}
+
+// 진행자 수수료율 조회 (개별 수수료율이 없으면 기본 수수료율 반환)
 export async function getOrganizerCommissionRate(organizerId: string): Promise<number> {
   const commissionRef = doc(db, 'organizerCommissions', organizerId)
   const commissionSnap = await getDoc(commissionRef)
   
+  // 개별 수수료율이 있으면 반환
   if (commissionSnap.exists()) {
-    return commissionSnap.data().rate || 10 // 기본값 10%
+    const data = commissionSnap.data()
+    if (data.rate !== undefined && data.rate !== null) {
+      return data.rate
+    }
   }
   
-  return 10 // 기본값 10%
+  // 개별 수수료율이 없으면 기본 수수료율 반환
+  return await getDefaultCommissionRate()
 }
 
 // 진행자 수수료율 설정 (관리자만)
@@ -103,5 +135,15 @@ export async function setOrganizerCommissionRate(organizerId: string, rate: numb
     rate,
     updatedAt: serverTimestamp(),
   }, { merge: true })
+}
+
+// 진행자 개별 수수료율 삭제 (기본 수수료율 사용)
+export async function deleteOrganizerCommissionRate(organizerId: string): Promise<void> {
+  const commissionRef = doc(db, 'organizerCommissions', organizerId)
+  const commissionSnap = await getDoc(commissionRef)
+  
+  if (commissionSnap.exists()) {
+    await deleteDoc(commissionRef)
+  }
 }
 
