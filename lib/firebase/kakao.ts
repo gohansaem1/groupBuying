@@ -130,6 +130,10 @@ export async function signInWithKakaoSDK(forceSelectAccount: boolean = false) {
     // 현재 URL 기반으로 콜백 URL 생성
     const redirectUri = `${window.location.origin}/api/auth/kakao/callback`
     
+    console.log('[카카오 로그인] Redirect URI:', redirectUri)
+    console.log('[카카오 로그인] 중요: 이 URI가 카카오 개발자 콘솔에 등록되어 있어야 합니다!')
+    console.log('[카카오 로그인] 카카오 개발자 콘솔 > 카카오 로그인 > Redirect URI 등록에서 확인하세요.')
+    
     // Auth.authorize()를 사용하여 카카오 웹 로그인 페이지로 리다이렉트
     // 이렇게 하면 아이디/비밀번호 입력 UI가 표시됩니다
     const authorizeOptions: any = {
@@ -145,9 +149,14 @@ export async function signInWithKakaoSDK(forceSelectAccount: boolean = false) {
     
     console.log('[카카오 로그인] Auth.authorize() 호출:', { redirectUri, throughTalk: false, prompt: authorizeOptions.prompt })
     
-    // 카카오 웹 로그인 페이지로 리다이렉트
-    // 이 함수는 페이지를 이동시키므로 이후 코드는 실행되지 않습니다
-    window.Kakao.Auth.authorize(authorizeOptions)
+    try {
+      // 카카오 웹 로그인 페이지로 리다이렉트
+      // 이 함수는 페이지를 이동시키므로 이후 코드는 실행되지 않습니다
+      window.Kakao.Auth.authorize(authorizeOptions)
+    } catch (err: any) {
+      console.error('[카카오 로그인] authorize() 호출 오류:', err)
+      throw new Error(`카카오 로그인 호출 실패: ${err.message || '알 수 없는 오류'}. Redirect URI가 카카오 개발자 콘솔에 등록되어 있는지 확인하세요.`)
+    }
     
     // 이 코드는 실행되지 않지만, 타입 에러 방지를 위해 반환값 추가
     return null as any
