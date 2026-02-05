@@ -83,7 +83,23 @@ export async function signInWithTestUser(userId: string): Promise<{ user: User; 
 }
 
 export async function signOut() {
+  // 카카오 로그인 세션도 함께 로그아웃
+  if (typeof window !== 'undefined' && window.Kakao && window.Kakao.isInitialized()) {
+    try {
+      // 카카오 액세스 토큰이 있는지 확인
+      if (window.Kakao.Auth.getAccessToken()) {
+        await window.Kakao.Auth.logout()
+        console.log('[로그아웃] 카카오 세션 로그아웃 완료')
+      }
+    } catch (error) {
+      console.warn('[로그아웃] 카카오 세션 로그아웃 실패 (무시 가능):', error)
+      // 카카오 로그아웃 실패해도 Firebase 로그아웃은 진행
+    }
+  }
+  
+  // Firebase 로그아웃
   await firebaseSignOut(auth)
+  console.log('[로그아웃] Firebase 로그아웃 완료')
 }
 
 export async function getCurrentUserProfile(): Promise<UserProfile | null> {

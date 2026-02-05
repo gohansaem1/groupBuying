@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { signInWithKakao, signInWithTestUser, getCurrentUserProfile, agreeToUserTerms } from '@/lib/firebase/auth'
+import { signInWithKakao, signInWithTestUser, getCurrentUserProfile, agreeToUserTerms, signOut, onAuthChange } from '@/lib/firebase/auth'
 import { initKakao, waitForKakaoSDK } from '@/lib/firebase/kakao'
 import TermsAgreementModal from '@/components/TermsAgreementModal'
 
@@ -18,8 +18,25 @@ function LoginPageContent() {
   const [testUserId, setTestUserId] = useState('')
   const [showTermsModal, setShowTermsModal] = useState(false)
   const [pendingRedirect, setPendingRedirect] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
   useEffect(() => {
+    // 현재 로그인 상태 확인
+    const unsubscribe = onAuthChange(async (user) => {
+      if (user) {
+        try {
+          const profile = await getCurrentUserProfile()
+          setCurrentUser(profile)
+        } catch (err) {
+          console.error('프로필 로드 오류:', err)
+        }
+      } else {
+        setCurrentUser(null)
+      }
+      setCheckingAuth(false)
+    })
+
     // 카카오 SDK 초기화
     const init = async () => {
       try {
@@ -35,7 +52,24 @@ function LoginPageContent() {
       }
     }
     init()
+
+    return () => {
+      unsubscribe()
+    }
   }, [])
+
+  const handleLogoutAndLogin = async () => {
+    try {
+      setLoading(true)
+      await signOut()
+      setCurrentUser(null)
+      setLoading(false)
+    } catch (err: any) {
+      console.error('로그아웃 오류:', err)
+      setError('로그아웃에 실패했습니다.')
+      setLoading(false)
+    }
+  }
 
   const handleKakaoLogin = async () => {
     if (!sdkReady) {
@@ -141,6 +175,57 @@ function LoginPageContent() {
       setError(err.message || '테스트 로그인에 실패했습니다.')
       setLoading(false)
     }
+  }
+
+  // 로그인 상태 확인 중
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+        <div className="text-lg">로딩 중...</div>
+      </div>
+    )
+  }
+
+  // 이미 로그인된 사용자
+  if (currentUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 px-4 py-8">
+        <div className="w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8">
+            <div className="text-center mb-6 sm:mb-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-2xl font-bold text-white">카</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">이미 로그인되어 있습니다</h1>
+              <p className="text-sm sm:text-base text-gray-600 mb-4">
+                {currentUser.nickname || currentUser.displayName || '사용자'}님으로 로그인되어 있습니다.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => router.push('/')}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+              >
+                홈으로 이동
+              </button>
+              
+              <button
+                onClick={handleLogoutAndLogin}
+                disabled={loading}
+                className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? '로그아웃 중...' : '다른 계정으로 로그인'}
+              </button>
+            </div>
+
+            {error && (
+              <div className="mt-4 text-red-500 text-sm text-center">{error}</div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
