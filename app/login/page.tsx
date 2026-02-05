@@ -22,6 +22,59 @@ function LoginPageContent() {
   const [checkingAuth, setCheckingAuth] = useState(true)
 
   useEffect(() => {
+    // 카카오 콜백에서 받은 토큰 처리
+    const handleCallbackToken = async () => {
+      const searchParams = new URLSearchParams(window.location.search)
+      const token = searchParams.get('token')
+      const error = searchParams.get('error')
+
+      if (error) {
+        setError(decodeURIComponent(error))
+        setLoading(false)
+        // URL에서 에러 파라미터 제거
+        window.history.replaceState({}, '', '/login')
+        return
+      }
+
+      if (token) {
+        try {
+          setLoading(true)
+          console.log('[로그인 페이지] 콜백 토큰 수신, Firebase 로그인 시작')
+          
+          // Firebase에 Custom Token으로 로그인
+          const { signInWithCustomToken } = await import('firebase/auth')
+          const { auth } = await import('@/lib/firebase/config')
+          const userCredential = await signInWithCustomToken(auth, token)
+          
+          console.log('[로그인 페이지] Firebase 로그인 완료:', userCredential.user.uid)
+          
+          // URL에서 토큰 파라미터 제거
+          window.history.replaceState({}, '', '/login')
+          
+          // 프로필 확인
+          const profile = await getCurrentUserProfile()
+          
+          // 닉네임이 없으면 닉네임 설정 페이지로
+          if (!profile?.nickname) {
+            router.push('/setup-nickname')
+          } else {
+            // returnUrl이 있으면 해당 페이지로, 없으면 홈으로
+            router.push(returnUrl)
+          }
+        } catch (err: any) {
+          console.error('토큰 로그인 오류:', err)
+          setError(err.message || '로그인에 실패했습니다.')
+          setLoading(false)
+          // URL에서 토큰 파라미터 제거
+          window.history.replaceState({}, '', '/login')
+        }
+        return
+      }
+    }
+
+    // 콜백 토큰 처리
+    handleCallbackToken()
+
     // 현재 로그인 상태 확인
     const unsubscribe = onAuthChange(async (user) => {
       if (user) {
@@ -56,7 +109,7 @@ function LoginPageContent() {
     return () => {
       unsubscribe()
     }
-  }, [])
+  }, [router, returnUrl])
 
   const handleLogoutAndLogin = async () => {
     try {
@@ -101,34 +154,12 @@ function LoginPageContent() {
       }
     }
 
-    const LOGIN_TIMEOUT_MS = 40000 // 40초 (카카오 로그인 + Firebase 인증 + 프로필 처리 시간 고려)
-
     try {
-      console.log('[로그인 페이지] 카카오 로그인 시작', { forceSelectAccount })
-      await signInWithKakao(forceSelectAccount) // throughTalk 옵션으로 계정 선택 화면 표시
-      console.log('[로그인 페이지] 카카오 로그인 완료')
-      
-      // 로그인 성공 후 즉시 리다이렉트 (프로필은 리다이렉트된 페이지에서 처리)
-      // 리다이렉트가 일어나면 이 컴포넌트가 언마운트되므로, 이후 코드는 실행되지 않을 수 있음
-      console.log('[로그인 페이지] 리다이렉트 시작')
-      
-      // returnUrl이 있으면 해당 페이지로, 없으면 홈으로
-      router.push(returnUrl)
-      
-      // 리다이렉트 후에도 약간의 시간을 두고 프로필 확인 시도 (선택사항)
-      // 하지만 리다이렉트가 일어나면 이 코드는 실행되지 않을 수 있음
-      setTimeout(async () => {
-        try {
-          const profile = await getCurrentUserProfile()
-          console.log('[로그인 페이지] 프로필 확인 완료 (리다이렉트 후)', profile)
-          
-          // 프로필이 있고 약관 동의가 필요한 경우, 홈 페이지에서 처리하도록 함
-          // (홈 페이지의 useEffect에서 처리됨)
-        } catch (err) {
-          console.warn('[로그인 페이지] 프로필 확인 실패 (리다이렉트 후, 무시 가능)', err)
-        }
-      }, 100)
-      
+      console.log('[로그인 페이지] 카카오 웹 로그인 화면으로 이동', { forceSelectAccount })
+      // Auth.authorize()를 호출하면 카카오 웹 로그인 페이지로 리다이렉트됩니다
+      // 이후 콜백에서 토큰을 받아서 처리합니다
+      await signInWithKakao(forceSelectAccount)
+      // 이 코드는 실행되지 않습니다 (페이지가 리다이렉트되므로)
     } catch (err: any) {
       const message = err.message || '로그인에 실패했습니다.'
       setError(message)
