@@ -20,7 +20,7 @@ function initFirebaseAdmin() {
 
   const projectId = process.env.FIREBASE_PROJECT_ID
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY
 
   if (!projectId || !clientEmail || !privateKey) {
     console.error('Firebase Admin 환경 변수가 설정되지 않았습니다.')
@@ -32,25 +32,50 @@ function initFirebaseAdmin() {
     return
   }
 
+  // Private Key 처리: 큰따옴표 제거 및 줄바꿈 문자 처리
+  // Vercel 환경 변수에서 큰따옴표가 포함되어 있을 수 있음
+  privateKey = privateKey.replace(/^["']|["']$/g, '') // 앞뒤 큰따옴표/작은따옴표 제거
+  privateKey = privateKey.replace(/\\n/g, '\n') // \\n을 실제 줄바꿈으로 변환
+
+  // Private Key 형식 검증
+  if (!privateKey.includes('BEGIN PRIVATE KEY')) {
+    console.error('FIREBASE_PRIVATE_KEY 형식이 올바르지 않습니다.')
+    console.error('Private Key 시작 부분:', privateKey.substring(0, 50))
+    return
+  }
+
   try {
     // 이미 초기화된 앱이 있는지 확인
     const existingApps = getApps()
     if (existingApps.length > 0) {
       adminApp = existingApps[0]
-    } else {
-      adminApp = initializeApp({
-        credential: cert({
-          projectId,
-          clientEmail,
-          privateKey,
-        }),
+      adminAuth = getAuth(adminApp)
+      adminDb = getFirestore(adminApp)
+      console.log('Firebase Admin 준비 완료:', { 
+        projectId, 
+        hasAuth: !!adminAuth, 
+        hasDb: !!adminDb 
       })
+      return
     }
+
+    adminApp = initializeApp({
+      credential: cert({
+        projectId,
+        clientEmail,
+        privateKey,
+      }),
+    })
     
     adminAuth = getAuth(adminApp)
     adminDb = getFirestore(adminApp)
     
     console.log('Firebase Admin 초기화 성공:', projectId)
+    console.log('Firebase Admin 준비 완료:', { 
+      projectId, 
+      hasAuth: !!adminAuth, 
+      hasDb: !!adminDb 
+    })
   } catch (error: any) {
     console.error('Firebase Admin 초기화 오류:', error)
     console.error('오류 상세:', {
@@ -58,6 +83,8 @@ function initFirebaseAdmin() {
       code: error.code,
       projectId,
       clientEmail: clientEmail ? `${clientEmail.substring(0, 20)}...` : '없음',
+      privateKeyLength: privateKey?.length,
+      privateKeyStart: privateKey?.substring(0, 30),
     })
   }
 }
