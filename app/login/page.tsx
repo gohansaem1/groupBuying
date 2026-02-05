@@ -80,11 +80,30 @@ function LoginPageContent() {
     setLoading(true)
     setError(null)
 
+    // 다른 계정으로 로그인하려면 먼저 로그아웃
+    if (forceSelectAccount) {
+      try {
+        console.log('[로그인 페이지] 다른 계정으로 로그인: 기존 세션 로그아웃 중...')
+        // 카카오 세션 로그아웃
+        if (window.Kakao && window.Kakao.isInitialized() && window.Kakao.Auth.getAccessToken()) {
+          await window.Kakao.Auth.logout()
+          console.log('[로그인 페이지] 카카오 세션 로그아웃 완료')
+        }
+        // Firebase 로그아웃
+        await signOut()
+        setCurrentUser(null)
+        console.log('[로그인 페이지] 로그아웃 완료, 로그인 시작...')
+      } catch (err) {
+        console.warn('[로그인 페이지] 로그아웃 중 오류 (무시하고 계속):', err)
+        // 로그아웃 실패해도 로그인은 시도
+      }
+    }
+
     const LOGIN_TIMEOUT_MS = 40000 // 40초 (카카오 로그인 + Firebase 인증 + 프로필 처리 시간 고려)
 
     try {
       console.log('[로그인 페이지] 카카오 로그인 시작', { forceSelectAccount })
-      await signInWithKakao(forceSelectAccount)
+      await signInWithKakao() // prompt는 지원되지 않으므로 파라미터 제거
       console.log('[로그인 페이지] 카카오 로그인 완료')
       
       // 로그인 성공 후 즉시 리다이렉트 (프로필은 리다이렉트된 페이지에서 처리)
