@@ -71,7 +71,7 @@ function LoginPageContent() {
     }
   }
 
-  const handleKakaoLogin = async () => {
+  const handleKakaoLogin = async (forceSelectAccount: boolean = false) => {
     if (!sdkReady) {
       setError('카카오 SDK가 준비되지 않았습니다. .env.local에 NEXT_PUBLIC_KAKAO_JS_KEY가 설정되어 있는지 확인해 주세요.')
       return
@@ -83,8 +83,8 @@ function LoginPageContent() {
     const LOGIN_TIMEOUT_MS = 40000 // 40초 (카카오 로그인 + Firebase 인증 + 프로필 처리 시간 고려)
 
     try {
-      console.log('[로그인 페이지] 카카오 로그인 시작')
-      await signInWithKakao()
+      console.log('[로그인 페이지] 카카오 로그인 시작', { forceSelectAccount })
+      await signInWithKakao(forceSelectAccount)
       console.log('[로그인 페이지] 카카오 로그인 완료')
       
       // 로그인 성공 후 즉시 리다이렉트 (프로필은 리다이렉트된 페이지에서 처리)
@@ -276,11 +276,12 @@ function LoginPageContent() {
             </div>
           ) : (
             // 카카오 로그인 모드
-            <button
-              onClick={handleKakaoLogin}
-              disabled={loading || !sdkReady}
-              className="w-full bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold py-3 sm:py-4 px-4 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-yellow-400/50 text-base sm:text-lg"
-            >
+            <div className="space-y-3">
+              <button
+                onClick={() => handleKakaoLogin(false)}
+                disabled={loading || !sdkReady}
+                className="w-full bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold py-3 sm:py-4 px-4 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-yellow-400/50 text-base sm:text-lg"
+              >
               {loading ? (
                 <span className="flex items-center">
                   <svg className="animate-spin -ml-1 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24">
@@ -299,7 +300,17 @@ function LoginPageContent() {
                   <span>카카오 로그인</span>
                 </>
               )}
-            </button>
+              </button>
+              
+              {/* 다른 계정으로 로그인 버튼 */}
+              <button
+                onClick={() => handleKakaoLogin(true)}
+                disabled={loading || !sdkReady}
+                className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              >
+                {loading ? '로그인 중...' : '다른 계정으로 로그인'}
+              </button>
+            </div>
           )}
           
           {error && (

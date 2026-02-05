@@ -111,7 +111,7 @@ export function waitForKakaoSDK(): Promise<void> {
 }
 
 // 카카오 로그인
-export async function signInWithKakaoSDK() {
+export async function signInWithKakaoSDK(forceSelectAccount: boolean = false) {
   // SDK 로드 대기
   await waitForKakaoSDK()
 
@@ -120,7 +120,7 @@ export async function signInWithKakaoSDK() {
   }
 
   try {
-    console.log('[카카오 로그인] 1단계: 카카오 로그인 시작')
+    console.log('[카카오 로그인] 1단계: 카카오 로그인 시작', { forceSelectAccount })
     
     // SDK 초기화 상태 확인
     if (!window.Kakao.isInitialized()) {
@@ -222,6 +222,12 @@ export async function signInWithKakaoSDK() {
           // scope 제거: 카카오 SDK v1.43.6에서는 scope를 명시하지 않으면 기본 권한만 요청합니다.
           // 기본 권한: 닉네임, 프로필 사진
           // 이메일은 카카오 개발자 콘솔에서 동의 항목이 활성화되어 있을 때 자동으로 포함됩니다.
+        }
+        
+        // 계정 선택 화면 강제 표시 (다른 계정으로 로그인할 수 있도록)
+        if (forceSelectAccount) {
+          loginOptions.prompt = 'select_account'
+          console.log('[카카오 로그인] 계정 선택 화면 강제 표시')
         }
         
         // 카카오 SDK v1.43.6에서는 scope를 통해 권한 요청
