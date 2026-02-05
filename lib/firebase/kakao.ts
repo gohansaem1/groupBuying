@@ -224,11 +224,13 @@ export async function signInWithKakaoSDK(forceSelectAccount: boolean = false) {
           // 이메일은 카카오 개발자 콘솔에서 동의 항목이 활성화되어 있을 때 자동으로 포함됩니다.
         }
         
-        // 다른 계정으로 로그인하려면 throughTalk: false로 설정하여 웹 로그인 화면 강제 표시
-        if (forceSelectAccount) {
-          loginOptions.throughTalk = false
-          console.log('[카카오 로그인] 계정 선택 화면 강제 표시 (throughTalk: false)')
-        }
+        // 웹 로그인 화면을 항상 표시하여 사용자가 계정을 선택할 수 있도록 함
+        // throughTalk: false를 설정하면:
+        // 1. 카카오톡 간편로그인을 사용하지 않고 웹 로그인 화면 표시
+        // 2. 기존 세션이 있으면 "다시 로그인하기" 버튼이 자동으로 표시됨
+        // 3. 사용자가 아이디/비밀번호를 입력하거나 다른 계정을 선택할 수 있음
+        loginOptions.throughTalk = false
+        console.log('[카카오 로그인] 웹 로그인 화면 표시 (throughTalk: false)')
         
         // 카카오 SDK v1.43.6에서는 scope를 통해 권한 요청
         window.Kakao.Auth.login(loginOptions)
