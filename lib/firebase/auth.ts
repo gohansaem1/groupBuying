@@ -41,10 +41,10 @@ export interface UserProfile {
 }
 
 // 카카오 로그인
-export async function signInWithKakao() {
+export async function signInWithKakao(forceSelectAccount: boolean = false) {
   // 카카오 SDK를 사용한 로그인
   const { signInWithKakaoSDK } = await import('./kakao')
-  return await signInWithKakaoSDK()
+  return await signInWithKakaoSDK(forceSelectAccount)
 }
 
 // 테스트용 로그인 (개발 환경에서만)

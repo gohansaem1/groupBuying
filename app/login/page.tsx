@@ -92,7 +92,9 @@ function LoginPageContent() {
         // Firebase 로그아웃
         await signOut()
         setCurrentUser(null)
-        console.log('[로그인 페이지] 로그아웃 완료, 로그인 시작...')
+        console.log('[로그인 페이지] 로그아웃 완료, 잠시 대기 후 로그인 시작...')
+        // 카카오 세션 정리를 위한 짧은 지연
+        await new Promise(resolve => setTimeout(resolve, 500))
       } catch (err) {
         console.warn('[로그인 페이지] 로그아웃 중 오류 (무시하고 계속):', err)
         // 로그아웃 실패해도 로그인은 시도
@@ -103,7 +105,7 @@ function LoginPageContent() {
 
     try {
       console.log('[로그인 페이지] 카카오 로그인 시작', { forceSelectAccount })
-      await signInWithKakao() // prompt는 지원되지 않으므로 파라미터 제거
+      await signInWithKakao(forceSelectAccount) // throughTalk 옵션으로 계정 선택 화면 표시
       console.log('[로그인 페이지] 카카오 로그인 완료')
       
       // 로그인 성공 후 즉시 리다이렉트 (프로필은 리다이렉트된 페이지에서 처리)

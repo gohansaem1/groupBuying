@@ -111,7 +111,7 @@ export function waitForKakaoSDK(): Promise<void> {
 }
 
 // 카카오 로그인
-export async function signInWithKakaoSDK() {
+export async function signInWithKakaoSDK(forceSelectAccount: boolean = false) {
   // SDK 로드 대기
   await waitForKakaoSDK()
 
@@ -120,7 +120,7 @@ export async function signInWithKakaoSDK() {
   }
 
   try {
-    console.log('[카카오 로그인] 1단계: 카카오 로그인 시작')
+    console.log('[카카오 로그인] 1단계: 카카오 로그인 시작', { forceSelectAccount })
     
     // SDK 초기화 상태 확인
     if (!window.Kakao.isInitialized()) {
@@ -224,8 +224,13 @@ export async function signInWithKakaoSDK() {
           // 이메일은 카카오 개발자 콘솔에서 동의 항목이 활성화되어 있을 때 자동으로 포함됩니다.
         }
         
+        // 다른 계정으로 로그인하려면 throughTalk: false로 설정하여 웹 로그인 화면 강제 표시
+        if (forceSelectAccount) {
+          loginOptions.throughTalk = false
+          console.log('[카카오 로그인] 계정 선택 화면 강제 표시 (throughTalk: false)')
+        }
+        
         // 카카오 SDK v1.43.6에서는 scope를 통해 권한 요청
-        // 참고: prompt 파라미터는 지원되지 않으므로, 다른 계정으로 로그인하려면 먼저 로그아웃해야 합니다.
         window.Kakao.Auth.login(loginOptions)
         
         // 팝업 차단 체크 (약간의 지연 후)
