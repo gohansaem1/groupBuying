@@ -145,12 +145,27 @@ export async function GET(request: NextRequest) {
         redirectUri: REDIRECT_URI,
         hasRestApiKey: !!REST_API_KEY,
         restApiKeyPrefix: REST_API_KEY ? `${REST_API_KEY.substring(0, 10)}...` : '없음',
+        restApiKeySource: process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY ? 'REST_API_KEY' : 'JS_KEY',
       })
       
       // 에러 메시지를 더 자세히 전달
       let errorMessage = 'token_exchange_failed'
+      let userFriendlyMessage = '카카오 로그인 처리 중 오류가 발생했습니다.'
+      
       try {
         const errorData = JSON.parse(errorText)
+        console.error('[카카오 콜백] 에러 데이터:', errorData)
+        
+        if (errorData.error === 'invalid_client') {
+          userFriendlyMessage = 'REST API 키가 잘못되었습니다. Vercel 환경 변수에 NEXT_PUBLIC_KAKAO_REST_API_KEY가 올바르게 설정되어 있는지 확인하세요.'
+        } else if (errorData.error === 'redirect_uri_mismatch') {
+          userFriendlyMessage = 'Redirect URI가 일치하지 않습니다. 카카오 개발자 콘솔에서 Redirect URI를 확인하세요.'
+        } else if (errorData.error === 'invalid_grant') {
+          userFriendlyMessage = '인가 코드가 유효하지 않습니다. 다시 로그인해 주세요.'
+        } else if (errorData.error_description) {
+          userFriendlyMessage = `카카오 로그인 오류: ${errorData.error_description}`
+        }
+        
         if (errorData.error) {
           errorMessage = `${errorMessage}_${errorData.error}`
         }
@@ -159,10 +174,11 @@ export async function GET(request: NextRequest) {
         }
       } catch (e) {
         // JSON 파싱 실패 시 원본 텍스트 사용
+        console.error('[카카오 콜백] 에러 텍스트 파싱 실패:', e)
         errorMessage = `${errorMessage}_${encodeURIComponent(errorText.substring(0, 100))}`
       }
       
-      return NextResponse.redirect(new URL(`/login?error=${errorMessage}`, request.url))
+      return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(userFriendlyMessage)}`, request.url))
     }
 
     const tokenData = await tokenResponse.json()
