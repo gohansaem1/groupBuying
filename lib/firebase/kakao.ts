@@ -136,18 +136,14 @@ export async function signInWithKakaoSDK(forceSelectAccount: boolean = false) {
     
     // Auth.authorize()를 사용하여 카카오 웹 로그인 페이지로 리다이렉트
     // 이렇게 하면 아이디/비밀번호 입력 UI가 표시됩니다
+    // 참고: 카카오 SDK v1.43.6의 Auth.authorize()는 prompt 파라미터를 지원하지 않습니다
+    // 다른 계정으로 로그인하려면 먼저 로그아웃하면 됩니다 (이미 handleKakaoLogin에서 처리됨)
     const authorizeOptions: any = {
       redirectUri: redirectUri,
-      throughTalk: false, // 웹 로그인 화면 표시
+      throughTalk: false, // 웹 로그인 화면 표시 (항상 웹 로그인 화면 표시)
     }
     
-    // 계정 선택 화면 강제 표시
-    if (forceSelectAccount) {
-      authorizeOptions.prompt = 'select_account'
-      console.log('[카카오 로그인] 계정 선택 화면 강제 표시 (prompt: select_account)')
-    }
-    
-    console.log('[카카오 로그인] Auth.authorize() 호출:', { redirectUri, throughTalk: false, prompt: authorizeOptions.prompt })
+    console.log('[카카오 로그인] Auth.authorize() 호출:', { redirectUri, throughTalk: false })
     
     try {
       // 카카오 웹 로그인 페이지로 리다이렉트
