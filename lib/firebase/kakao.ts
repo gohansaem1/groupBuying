@@ -131,8 +131,10 @@ export async function signInWithKakaoSDK(forceSelectAccount: boolean = false) {
     const redirectUri = `${window.location.origin}/api/auth/kakao/callback`
     
     console.log('[카카오 로그인] Redirect URI:', redirectUri)
-    console.log('[카카오 로그인] 중요: 이 URI가 카카오 개발자 콘솔에 등록되어 있어야 합니다!')
+    console.log('[카카오 로그인] ⚠️ 중요: 이 URI가 카카오 개발자 콘솔에 정확히 등록되어 있어야 합니다!')
     console.log('[카카오 로그인] 카카오 개발자 콘솔 > 카카오 로그인 > Redirect URI 등록에서 확인하세요.')
+    console.log('[카카오 로그인] 등록해야 할 URI:', redirectUri)
+    console.log('[카카오 로그인] 400 에러가 발생하면 Redirect URI가 등록되지 않았거나 형식이 맞지 않습니다.')
     
     // Auth.authorize()를 사용하여 카카오 웹 로그인 페이지로 리다이렉트
     // 이렇게 하면 아이디/비밀번호 입력 UI가 표시됩니다
