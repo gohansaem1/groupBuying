@@ -29,7 +29,23 @@ function LoginPageContent() {
       const error = searchParams.get('error')
 
       if (error) {
-        setError(decodeURIComponent(error))
+        const decodedError = decodeURIComponent(error)
+        console.error('[로그인 페이지] 콜백 에러:', decodedError)
+        
+        // 에러 메시지 개선
+        let errorMessage = decodedError
+        if (decodedError.includes('token_exchange_failed')) {
+          errorMessage = '카카오 로그인 처리 중 오류가 발생했습니다. 카카오 개발자 콘솔에서 Redirect URI가 정확히 등록되어 있는지 확인하세요.'
+          if (decodedError.includes('invalid_grant')) {
+            errorMessage += ' (인가 코드가 유효하지 않습니다. 다시 로그인해 주세요.)'
+          } else if (decodedError.includes('invalid_client')) {
+            errorMessage += ' (REST API 키가 잘못되었습니다. 환경 변수를 확인하세요.)'
+          } else if (decodedError.includes('redirect_uri_mismatch')) {
+            errorMessage += ' (Redirect URI가 일치하지 않습니다. 카카오 개발자 콘솔에서 확인하세요.)'
+          }
+        }
+        
+        setError(errorMessage)
         setLoading(false)
         // URL에서 에러 파라미터 제거
         window.history.replaceState({}, '', '/login')

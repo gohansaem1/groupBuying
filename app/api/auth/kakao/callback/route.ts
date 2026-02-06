@@ -87,16 +87,36 @@ export async function GET(request: NextRequest) {
 
     // 카카오 REST API 키 (서버 사이드에서 사용)
     // REST API 키는 카카오 개발자 콘솔 > 내 애플리케이션 > 앱 키에서 확인 가능
+    // 중요: JS 키와 REST API 키는 다를 수 있습니다. REST API 키를 사용해야 합니다.
     const REST_API_KEY = process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY || process.env.NEXT_PUBLIC_KAKAO_JS_KEY
     const REDIRECT_URI = `${request.nextUrl.origin}/api/auth/kakao/callback`
 
+    console.log('[카카오 콜백] 설정 확인:', {
+      hasRestApiKey: !!process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY,
+      hasJsKey: !!process.env.NEXT_PUBLIC_KAKAO_JS_KEY,
+      restApiKeyPrefix: REST_API_KEY ? `${REST_API_KEY.substring(0, 10)}...` : '없음',
+      redirectUri: REDIRECT_URI,
+      codeLength: code?.length,
+    })
+
     if (!REST_API_KEY) {
-      console.error('카카오 REST API 키가 설정되지 않았습니다.')
+      console.error('[카카오 콜백] REST API 키가 설정되지 않았습니다.')
+      console.error('[카카오 콜백] 환경 변수 확인:', {
+        NEXT_PUBLIC_KAKAO_REST_API_KEY: !!process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY,
+        NEXT_PUBLIC_KAKAO_JS_KEY: !!process.env.NEXT_PUBLIC_KAKAO_JS_KEY,
+      })
       return NextResponse.redirect(new URL('/login?error=no_api_key', request.url))
     }
 
     // 인가 코드를 액세스 토큰으로 교환
     console.log('[카카오 콜백] 액세스 토큰 교환 시작')
+    console.log('[카카오 콜백] 요청 파라미터:', {
+      grant_type: 'authorization_code',
+      client_id: REST_API_KEY ? `${REST_API_KEY.substring(0, 10)}...` : '없음',
+      redirect_uri: REDIRECT_URI,
+      code: code ? `${code.substring(0, 20)}...` : '없음',
+    })
+
     const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
       method: 'POST',
       headers: {
@@ -110,10 +130,39 @@ export async function GET(request: NextRequest) {
       }),
     })
 
+    console.log('[카카오 콜백] 토큰 교환 응답:', {
+      status: tokenResponse.status,
+      statusText: tokenResponse.statusText,
+      ok: tokenResponse.ok,
+    })
+
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text()
-      console.error('카카오 토큰 교환 오류:', errorText)
-      return NextResponse.redirect(new URL('/login?error=token_exchange_failed', request.url))
+      console.error('[카카오 콜백] 토큰 교환 오류 상세:', {
+        status: tokenResponse.status,
+        statusText: tokenResponse.statusText,
+        errorText: errorText,
+        redirectUri: REDIRECT_URI,
+        hasRestApiKey: !!REST_API_KEY,
+        restApiKeyPrefix: REST_API_KEY ? `${REST_API_KEY.substring(0, 10)}...` : '없음',
+      })
+      
+      // 에러 메시지를 더 자세히 전달
+      let errorMessage = 'token_exchange_failed'
+      try {
+        const errorData = JSON.parse(errorText)
+        if (errorData.error) {
+          errorMessage = `${errorMessage}_${errorData.error}`
+        }
+        if (errorData.error_description) {
+          errorMessage = `${errorMessage}_${encodeURIComponent(errorData.error_description)}`
+        }
+      } catch (e) {
+        // JSON 파싱 실패 시 원본 텍스트 사용
+        errorMessage = `${errorMessage}_${encodeURIComponent(errorText.substring(0, 100))}`
+      }
+      
+      return NextResponse.redirect(new URL(`/login?error=${errorMessage}`, request.url))
     }
 
     const tokenData = await tokenResponse.json()
