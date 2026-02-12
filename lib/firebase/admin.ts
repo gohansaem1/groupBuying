@@ -146,4 +146,3 @@ export async function deleteOrganizerCommissionRate(organizerId: string): Promis
     await deleteDoc(commissionRef)
   }
 }
-
