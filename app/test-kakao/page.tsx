@@ -7,7 +7,7 @@ export default function TestKakaoPage() {
   const [testResults, setTestResults] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
-  const addResult = (test: string, status: 'success' | 'error' | 'warning', message: string, details?: any) => {
+  const addResult = (test: string, status: 'success' | 'error' | 'warning' | 'info', message: string, details?: any) => {
     setTestResults(prev => [...prev, {
       test,
       status,
@@ -183,7 +183,9 @@ export default function TestKakaoPage() {
                     ? 'bg-red-50 border-red-200'
                     : result.status === 'warning'
                     ? 'bg-yellow-50 border-yellow-200'
-                    : 'bg-blue-50 border-blue-200'
+                    : result.status === 'info'
+                    ? 'bg-blue-50 border-blue-200'
+                    : 'bg-gray-50 border-gray-200'
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -199,6 +201,9 @@ export default function TestKakaoPage() {
                       )}
                       {result.status === 'warning' && (
                         <span className="text-yellow-600 font-bold">⚠</span>
+                      )}
+                      {result.status === 'info' && (
+                        <span className="text-blue-600 font-bold">ℹ</span>
                       )}
                     </div>
                     <p className="text-sm text-gray-700 whitespace-pre-line">{result.message}</p>
