@@ -6,6 +6,12 @@ import { initKakao, waitForKakaoSDK } from '@/lib/firebase/kakao'
 export default function TestKakaoPage() {
   const [testResults, setTestResults] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  // 클라이언트 사이드에서만 렌더링되도록 확인
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const addResult = (test: string, status: 'success' | 'error' | 'warning' | 'info', message: string, details?: any) => {
     setTestResults(prev => [...prev, {
@@ -18,6 +24,11 @@ export default function TestKakaoPage() {
   }
 
   const runTests = async () => {
+    if (typeof window === 'undefined') {
+      addResult('브라우저 환경', 'error', '브라우저 환경이 아닙니다.')
+      return
+    }
+
     setTestResults([])
     setLoading(true)
 
@@ -45,7 +56,7 @@ export default function TestKakaoPage() {
         initKakao()
         await waitForKakaoSDK()
         
-        if (window.Kakao && window.Kakao.isInitialized()) {
+        if (typeof window !== 'undefined' && window.Kakao && window.Kakao.isInitialized()) {
           addResult('카카오 SDK 초기화', 'success', '카카오 SDK가 정상적으로 초기화되었습니다.', {
             version: window.Kakao?.VERSION || 'unknown',
             isInitialized: window.Kakao.isInitialized(),
@@ -59,38 +70,38 @@ export default function TestKakaoPage() {
       }
 
       // 테스트 3: 현재 URL 및 Redirect URI 확인
-      addResult('Redirect URI 확인', 'info', 'Redirect URI 확인 중...')
-      const currentOrigin = window.location.origin
-      const redirectUri = `${currentOrigin}/api/auth/kakao/callback`
-      addResult('현재 Origin', 'info', currentOrigin)
-      addResult('Redirect URI', 'info', redirectUri)
-      addResult('Redirect URI 등록 필요', 'warning', `카카오 개발자 콘솔에 다음 URI를 등록하세요:\n${redirectUri}`)
+      if (typeof window !== 'undefined') {
+        addResult('Redirect URI 확인', 'info', 'Redirect URI 확인 중...')
+        const currentOrigin = window.location.origin
+        const redirectUri = `${currentOrigin}/api/auth/kakao/callback`
+        addResult('현재 Origin', 'info', currentOrigin)
+        addResult('Redirect URI', 'info', redirectUri)
+        addResult('Redirect URI 등록 필요', 'warning', `카카오 개발자 콘솔에 다음 URI를 등록하세요:\n${redirectUri}`)
 
-      // 테스트 4: 카카오 로그인 상태 확인
-      if (window.Kakao && window.Kakao.isInitialized()) {
-        addResult('카카오 로그인 상태', 'info', '카카오 로그인 상태 확인 중...')
-        try {
-          const accessToken = window.Kakao.Auth.getAccessToken()
-          if (accessToken) {
-            addResult('카카오 액세스 토큰', 'warning', '이미 로그인된 상태입니다. 로그아웃 후 테스트하세요.', {
-              tokenPrefix: accessToken.substring(0, 20) + '...',
-            })
-          } else {
-            addResult('카카오 액세스 토큰', 'success', '로그인되지 않은 상태입니다.')
+        // 테스트 4: 카카오 로그인 상태 확인
+        if (window.Kakao && window.Kakao.isInitialized()) {
+          addResult('카카오 로그인 상태', 'info', '카카오 로그인 상태 확인 중...')
+          try {
+            const accessToken = window.Kakao.Auth.getAccessToken()
+            if (accessToken) {
+              addResult('카카오 액세스 토큰', 'warning', '이미 로그인된 상태입니다. 로그아웃 후 테스트하세요.', {
+                tokenPrefix: accessToken.substring(0, 20) + '...',
+              })
+            } else {
+              addResult('카카오 액세스 토큰', 'success', '로그인되지 않은 상태입니다.')
+            }
+          } catch (err: any) {
+            addResult('카카오 로그인 상태', 'error', `상태 확인 실패: ${err.message}`)
           }
-        } catch (err: any) {
-          addResult('카카오 로그인 상태', 'error', `상태 확인 실패: ${err.message}`)
-        }
-      }
 
-      // 테스트 5: authorize 함수 테스트 (실제 호출하지 않고 옵션만 확인)
-      if (window.Kakao && window.Kakao.isInitialized()) {
-        addResult('Authorize 옵션 확인', 'info', 'Authorize 옵션 확인 중...')
-        const authorizeOptions = {
-          redirectUri: redirectUri,
-          throughTalk: false,
+          // 테스트 5: authorize 함수 테스트 (실제 호출하지 않고 옵션만 확인)
+          addResult('Authorize 옵션 확인', 'info', 'Authorize 옵션 확인 중...')
+          const authorizeOptions = {
+            redirectUri: redirectUri,
+            throughTalk: false,
+          }
+          addResult('Authorize 옵션', 'success', '옵션이 올바르게 설정되었습니다.', authorizeOptions)
         }
-        addResult('Authorize 옵션', 'success', '옵션이 올바르게 설정되었습니다.', authorizeOptions)
       }
 
       // 테스트 6: 서버 API 확인 (콜백 엔드포인트 존재 확인)
@@ -120,6 +131,11 @@ export default function TestKakaoPage() {
   }
 
   const testLogin = async () => {
+    if (typeof window === 'undefined') {
+      alert('브라우저 환경이 아닙니다.')
+      return
+    }
+
     if (!window.Kakao || !window.Kakao.isInitialized()) {
       alert('카카오 SDK가 초기화되지 않았습니다. 먼저 테스트를 실행하세요.')
       return
@@ -144,8 +160,19 @@ export default function TestKakaoPage() {
   }
 
   useEffect(() => {
-    runTests()
-  }, [])
+    if (mounted) {
+      runTests()
+    }
+  }, [mounted])
+
+  // 서버 사이드 렌더링 중에는 로딩 화면만 표시
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-lg">로딩 중...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-8">
@@ -165,7 +192,7 @@ export default function TestKakaoPage() {
             
             <button
               onClick={testLogin}
-              disabled={loading || !window.Kakao?.isInitialized()}
+              disabled={loading || (typeof window !== 'undefined' && window.Kakao && !window.Kakao.isInitialized())}
               className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               실제 로그인 테스트
