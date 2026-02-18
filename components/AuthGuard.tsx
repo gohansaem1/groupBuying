@@ -27,8 +27,8 @@ export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
 
   useEffect(() => {
     // /admin 경로에서는 AuthGuard를 사용하지 않음 (서버 사이드 세션 쿠키로 보호)
+    // Route Group (admin-protected)을 통해 이미 보호되므로 클라이언트 사이드 가드 불필요
     if (pathname?.startsWith('/admin')) {
-      console.warn('[AuthGuard] /admin 경로에서는 AuthGuard를 사용하지 않습니다. 서버 사이드 세션 쿠키로 보호됩니다.')
       setLoading(false)
       return
     }

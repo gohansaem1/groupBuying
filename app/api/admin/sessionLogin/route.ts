@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     const uid = decodedToken.uid
 
     // 오너 계정 확인
-    const ADMIN_OWNER_UID = process.env.ADMIN_OWNER_UID
+    const ADMIN_OWNER_UID = process.env.ADMIN_OWNER_UID?.trim()
     if (!ADMIN_OWNER_UID) {
       console.error('[관리자 세션] ADMIN_OWNER_UID 환경변수가 설정되지 않았습니다.')
       return NextResponse.json(
@@ -114,13 +114,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // UID 비교 (공백 제거)
+    // UID 비교 (단일 UID 또는 콤마로 구분된 리스트 지원)
     const allowedUids = ADMIN_OWNER_UID.split(',').map(u => u.trim()).filter(Boolean)
     if (!allowedUids.includes(uid)) {
       console.warn('[관리자 세션] 허용되지 않은 UID:', {
         uid,
         uidPrefix: uid.substring(0, 4),
-        allowedUids: allowedUids.map(u => u.substring(0, 4)),
+        allowedUidsCount: allowedUids.length,
+        allowedUidsPrefixes: allowedUids.map(u => u.substring(0, 4)),
       })
       return NextResponse.json(
         { error: '관리자 권한이 없습니다.' },

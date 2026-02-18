@@ -104,7 +104,7 @@ export default function OrganizerMyOrdersPage() {
 
   if (loading) {
     return (
-      <AuthGuard allowedRoles={['user', 'organizer', 'organizer_pending', 'admin']}>
+      <AuthGuard allowedRoles={['user', 'organizer', 'organizer_pending']}>
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="text-lg">로딩 중...</div>
         </div>
