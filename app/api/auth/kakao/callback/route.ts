@@ -99,12 +99,14 @@ export async function GET(request: NextRequest) {
       codeLength: code.length,
     })
 
-    // 카카오 REST API 키 확인 (서버 전용 환경변수)
+    // 환경변수 체크 (서버 시작 시 또는 요청 처리 시)
     const REST_API_KEY = process.env.KAKAO_REST_API_KEY
+    const CLIENT_SECRET = process.env.KAKAO_CLIENT_SECRET // 선택사항: 카카오 콘솔에서 Client Secret 사용이 ON인 경우만 필요
+    
     if (!REST_API_KEY) {
-      console.error('[카카오 콜백] REST API 키가 설정되지 않았습니다.', {
-        hasRestApiKey: false,
-        envKeys: Object.keys(process.env).filter(key => key.includes('KAKAO')),
+      console.error('[카카오 콜백] 환경변수 누락:', {
+        missing: 'KAKAO_REST_API_KEY',
+        availableKakaoKeys: Object.keys(process.env).filter(key => key.includes('KAKAO')),
       })
       return NextResponse.redirect(new URL('/login?error=missing_env&desc=KAKAO_REST_API_KEY가 설정되지 않았습니다', request.url))
     }
@@ -112,9 +114,13 @@ export async function GET(request: NextRequest) {
     // Redirect URI 설정 (환경변수 우선, 없으면 동적 생성)
     const REDIRECT_URI = process.env.KAKAO_REDIRECT_URI || `${request.nextUrl.origin}/api/auth/kakao/callback`
 
-    console.log('[카카오 콜백] 설정 확인:', {
-      hasRestApiKey: !!REST_API_KEY,
-      restApiKeyPrefix: REST_API_KEY ? `${REST_API_KEY.substring(0, 10)}...` : '없음',
+    // 디버깅용: 키 전체가 아닌 길이와 앞 4글자만 출력
+    console.log('[카카오 콜백] 환경변수 확인:', {
+      restApiKeyLength: REST_API_KEY.length,
+      restApiKeyPrefix: REST_API_KEY.substring(0, 4),
+      hasClientSecret: !!CLIENT_SECRET,
+      clientSecretLength: CLIENT_SECRET ? CLIENT_SECRET.length : 0,
+      clientSecretPrefix: CLIENT_SECRET ? CLIENT_SECRET.substring(0, 4) : '없음',
       redirectUri: REDIRECT_URI,
       redirectUriSource: process.env.KAKAO_REDIRECT_URI ? 'env' : 'dynamic',
       codeLength: code.length,
@@ -122,11 +128,29 @@ export async function GET(request: NextRequest) {
 
     // 인가 코드를 액세스 토큰으로 교환
     console.log('[카카오 콜백] 액세스 토큰 교환 시작')
-    console.log('[카카오 콜백] 요청 파라미터:', {
+    
+    // 요청 body 파라미터 구성
+    const tokenParams: Record<string, string> = {
       grant_type: 'authorization_code',
-      client_id: `${REST_API_KEY.substring(0, 10)}...`,
+      client_id: REST_API_KEY, // 반드시 REST API 키 사용
+      redirect_uri: REDIRECT_URI,
+      code: code,
+    }
+    
+    // Client Secret이 설정되어 있으면 포함 (카카오 콘솔에서 Client Secret 사용이 ON인 경우)
+    if (CLIENT_SECRET) {
+      tokenParams.client_secret = CLIENT_SECRET
+      console.log('[카카오 콜백] Client Secret 포함됨')
+    } else {
+      console.log('[카카오 콜백] Client Secret 없음 (카카오 콘솔에서 Client Secret 사용이 OFF인 경우 정상)')
+    }
+    
+    console.log('[카카오 콜백] 요청 파라미터:', {
+      grant_type: tokenParams.grant_type,
+      client_id: `${REST_API_KEY.substring(0, 4)}... (길이: ${REST_API_KEY.length})`,
       redirect_uri: REDIRECT_URI,
       code: `${code.substring(0, 20)}...`,
+      hasClientSecret: !!CLIENT_SECRET,
     })
 
     const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
@@ -134,12 +158,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: REST_API_KEY,
-        redirect_uri: REDIRECT_URI,
-        code: code,
-      }),
+      body: new URLSearchParams(tokenParams),
     })
 
     const responseStatus = tokenResponse.status
@@ -156,19 +175,25 @@ export async function GET(request: NextRequest) {
       const errorText = await tokenResponse.text()
       
       // 상세 로깅 (Vercel Functions 로그에서 확인 가능)
+      // 디버깅용: 키 전체가 아닌 길이와 앞 4글자만 출력
       console.error('[카카오 콜백] 토큰 교환 실패 - 상세 정보:', {
         status: responseStatus,
         statusText: responseStatusText,
         errorText: errorText,
         requestParams: {
           grant_type: 'authorization_code',
-          client_id: `${REST_API_KEY.substring(0, 10)}...`,
+          client_id: `${REST_API_KEY.substring(0, 4)}... (길이: ${REST_API_KEY.length})`,
           redirect_uri: REDIRECT_URI,
           code: `${code.substring(0, 20)}...`,
+          hasClientSecret: !!CLIENT_SECRET,
+          clientSecretLength: CLIENT_SECRET ? CLIENT_SECRET.length : 0,
+          clientSecretPrefix: CLIENT_SECRET ? CLIENT_SECRET.substring(0, 4) : '없음',
         },
         environment: {
           hasRestApiKey: !!REST_API_KEY,
           restApiKeyLength: REST_API_KEY.length,
+          restApiKeyPrefix: REST_API_KEY.substring(0, 4),
+          hasClientSecret: !!CLIENT_SECRET,
           redirectUriSource: process.env.KAKAO_REDIRECT_URI ? 'env' : 'dynamic',
         },
       })
