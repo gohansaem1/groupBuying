@@ -107,10 +107,21 @@ export default function Home() {
     let unsubscribe: (() => void) | null = null
     let isMounted = true
     let authChangeCompleted = false
+    let timeoutExecuted = false // 타임아웃이 이미 실행되었는지 추적
+    let fallbackTimer: NodeJS.Timeout | null = null
 
     try {
       unsubscribe = onAuthChange(async (user) => {
         if (!isMounted) return
+        
+        // 타임아웃이 이미 실행되었으면 무시
+        if (timeoutExecuted) return
+        
+        // 타임아웃 타이머 정리
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer)
+          fallbackTimer = null
+        }
         
         setUser(user)
         if (user) {
@@ -143,32 +154,36 @@ export default function Home() {
           setLoading(false)
         }
       })
+      
+      // Firebase 응답이 느릴 때 3초 후 로딩 해제 및 타임아웃 표시 (한 번만 실행)
+      fallbackTimer = setTimeout(() => {
+        if (isMounted && !authChangeCompleted && !timeoutExecuted) {
+          timeoutExecuted = true
+          console.warn('[홈 페이지] Firebase 응답 지연 (3초 초과)')
+          console.warn('[홈 페이지] 가능한 원인:')
+          console.warn('  1. Firebase 환경 변수 누락 (NEXT_PUBLIC_FIREBASE_*)')
+          console.warn('  2. Firestore 보안 규칙 문제 (permission-denied)')
+          console.warn('  3. Firebase Auth Authorized domains 미등록')
+          console.warn('  4. 네트워크 연결 문제')
+          setTimeoutReached(true)
+          setLoading(false)
+        }
+      }, 3000)
     } catch (error: any) {
       console.error('[홈 페이지] onAuthChange 설정 실패:', error)
       handleFirebaseError(error, '인증 초기화')
       setLoading(false)
     }
 
-    // Firebase 응답이 느릴 때 3초 후 로딩 해제 및 타임아웃 표시
-    const fallbackTimer = setTimeout(() => {
-      if (isMounted && !authChangeCompleted) {
-        console.warn('[홈 페이지] Firebase 응답 지연 (3초 초과)')
-        console.warn('[홈 페이지] 가능한 원인:')
-        console.warn('  1. Firebase 환경 변수 누락 (NEXT_PUBLIC_FIREBASE_*)')
-        console.warn('  2. Firestore 보안 규칙 문제 (permission-denied)')
-        console.warn('  3. Firebase Auth Authorized domains 미등록')
-        console.warn('  4. 네트워크 연결 문제')
-        setTimeoutReached(true)
-        setLoading(false)
-      }
-    }, 3000)
-
     return () => {
       isMounted = false
+      timeoutExecuted = true // cleanup 시 타임아웃 비활성화
       if (unsubscribe) {
         unsubscribe()
       }
-      clearTimeout(fallbackTimer)
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer)
+      }
     }
   }, [router])
 

@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import AuthGuard from '@/components/AuthGuard'
 import { getAllProducts, createProduct, updateProduct, deleteProduct, Product } from '@/lib/firebase/products'
 import { getOrganizerRecruitmentStatus, setOrganizerRecruitmentStatus, getAllUsers, updateUserRole, getPendingOrganizers, getOrganizerCommissionRate, setOrganizerCommissionRate, promoteOrganizerToAdmin, getDefaultCommissionRate, setDefaultCommissionRate, deleteOrganizerCommissionRate } from '@/lib/firebase/admin'
 import { UserProfile, getCurrentUserProfile, UserRole } from '@/lib/firebase/auth'
@@ -50,92 +49,92 @@ export default function AdminPage() {
     }
   }
 
+  // /admin 페이지는 서버 사이드 세션 쿠키 기반으로 보호되므로 AuthGuard 불필요
+  // app/(admin-protected)/admin/layout.tsx에서 이미 세션 검증을 수행함
   return (
-    <AuthGuard allowedRoles={['admin']}>
-      <div className="min-h-screen bg-gray-50">
-        <NavigationHeader 
-          userProfile={userProfile} 
-          currentPage="admin"
-          onProfileUpdate={async (updatedProfile) => {
-            setUserProfile(updatedProfile)
-          }}
-        />
+    <div className="min-h-screen bg-gray-50">
+      <NavigationHeader 
+        userProfile={userProfile} 
+        currentPage="admin"
+        onProfileUpdate={async (updatedProfile) => {
+          setUserProfile(updatedProfile)
+        }}
+      />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex space-x-4 mb-6 border-b">
-            <button
-              onClick={() => setActiveTab('products')}
-              className={`px-4 py-2 font-medium ${
-                activeTab === 'products'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              상품 관리
-            </button>
-            <button
-              onClick={() => setActiveTab('groups')}
-              className={`px-4 py-2 font-medium ${
-                activeTab === 'groups'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              공동구매 건 관리
-            </button>
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`px-4 py-2 font-medium ${
-                activeTab === 'users'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              사용자 관리
-            </button>
-            <button
-              onClick={() => setActiveTab('delivery')}
-              className={`px-4 py-2 font-medium ${
-                activeTab === 'delivery'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              배송관리
-            </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`px-4 py-2 font-medium ${
-                activeTab === 'settings'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              설정
-            </button>
-          </div>
-
-          {activeTab === 'products' && (
-            <ProductsTab products={products} onUpdate={loadData} />
-          )}
-          {activeTab === 'groups' && (
-            <GroupsTab groups={groups} products={products} onUpdate={loadData} />
-          )}
-          {activeTab === 'users' && (
-            <UsersTab onUpdate={loadData} />
-          )}
-          {activeTab === 'delivery' && (
-            <DeliveryTab groups={groups} onUpdate={loadData} />
-          )}
-          {activeTab === 'settings' && (
-            <SettingsTab
-              organizerRecruitmentEnabled={organizerRecruitmentEnabled}
-              onUpdate={loadData}
-            />
-          )}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex space-x-4 mb-6 border-b">
+          <button
+            onClick={() => setActiveTab('products')}
+            className={`px-4 py-2 font-medium ${
+              activeTab === 'products'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            상품 관리
+          </button>
+          <button
+            onClick={() => setActiveTab('groups')}
+            className={`px-4 py-2 font-medium ${
+              activeTab === 'groups'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            공동구매 건 관리
+          </button>
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`px-4 py-2 font-medium ${
+              activeTab === 'users'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            사용자 관리
+          </button>
+          <button
+            onClick={() => setActiveTab('delivery')}
+            className={`px-4 py-2 font-medium ${
+              activeTab === 'delivery'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            배송관리
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`px-4 py-2 font-medium ${
+              activeTab === 'settings'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            설정
+          </button>
         </div>
+
+        {activeTab === 'products' && (
+          <ProductsTab products={products} onUpdate={loadData} />
+        )}
+        {activeTab === 'groups' && (
+          <GroupsTab groups={groups} products={products} onUpdate={loadData} />
+        )}
+        {activeTab === 'users' && (
+          <UsersTab onUpdate={loadData} />
+        )}
+        {activeTab === 'delivery' && (
+          <DeliveryTab groups={groups} onUpdate={loadData} />
+        )}
+        {activeTab === 'settings' && (
+          <SettingsTab
+            organizerRecruitmentEnabled={organizerRecruitmentEnabled}
+            onUpdate={loadData}
+          />
+        )}
       </div>
-    </AuthGuard>
+    </div>
   )
 }
 

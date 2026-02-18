@@ -36,10 +36,21 @@ export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
 
     let unsubscribe: (() => void) | null = null
     let isMounted = true
+    let timeoutExecuted = false // 타임아웃이 이미 실행되었는지 추적
+    let fallbackTimer: NodeJS.Timeout | null = null
 
     try {
       unsubscribe = onAuthChange(async (user) => {
         if (!isMounted) return
+        
+        // 타임아웃이 이미 실행되었으면 무시
+        if (timeoutExecuted) return
+        
+        // 타임아웃 타이머 정리
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer)
+          fallbackTimer = null
+        }
         
         if (!user) {
           // 현재 URL을 returnUrl로 넘겨 로그인 페이지로 리다이렉트
@@ -74,26 +85,30 @@ export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
           setLoading(false)
         }
       })
+      
+      // Firebase 응답이 느릴 때 3초 후 로딩 해제 (한 번만 실행)
+      fallbackTimer = setTimeout(() => {
+        if (isMounted && !timeoutExecuted) {
+          timeoutExecuted = true
+          console.warn('[AuthGuard] Firebase 응답 지연으로 인해 로딩 상태를 해제합니다.')
+          setLoading(false)
+        }
+      }, 3000)
     } catch (error: any) {
       console.error('[AuthGuard] onAuthChange 설정 실패:', error)
       setFirebaseError(`인증 초기화 실패: ${error.message}`)
       setLoading(false)
     }
 
-    // Firebase 응답이 느릴 때 3초 후 로딩 해제
-    const fallbackTimer = setTimeout(() => {
-      if (isMounted) {
-        console.warn('[AuthGuard] Firebase 응답 지연으로 인해 로딩 상태를 해제합니다.')
-        setLoading(false)
-      }
-    }, 3000)
-
     return () => {
       isMounted = false
+      timeoutExecuted = true // cleanup 시 타임아웃 비활성화
       if (unsubscribe) {
         unsubscribe()
       }
-      clearTimeout(fallbackTimer)
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer)
+      }
     }
   }, [router, allowedRoles])
 
