@@ -4,6 +4,9 @@
  * Firebase ID 토큰을 받아서 세션 쿠키를 생성합니다.
  */
 
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
@@ -66,7 +69,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { idToken } = await request.json()
+    // 요청 본문 파싱
+    let body
+    try {
+      body = await request.json()
+    } catch (error: any) {
+      console.error('[관리자 세션] 요청 본문 파싱 실패:', error.message)
+      return NextResponse.json(
+        { error: '잘못된 요청 형식입니다.' },
+        { status: 400 }
+      )
+    }
+
+    const { idToken } = body
 
     if (!idToken) {
       return NextResponse.json(

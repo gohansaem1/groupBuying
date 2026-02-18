@@ -1,17 +1,26 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '@/lib/firebase/config'
 
 export default function AdminLoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // 로그인 페이지는 가드 로직 없이 항상 폼을 표시
+
+  // URL 쿼리에서 에러 파라미터 확인
+  useEffect(() => {
+    const errorParam = searchParams.get('error')
+    if (errorParam === 'session_invalid') {
+      setError('세션이 만료되었거나 유효하지 않습니다. 다시 로그인해주세요.')
+    }
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

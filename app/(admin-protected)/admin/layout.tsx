@@ -5,6 +5,10 @@
  * Route Group (admin-protected)을 사용하여 /admin/login은 이 레이아웃의 자식이 아닙니다.
  */
 
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
@@ -63,20 +67,20 @@ export default async function AdminLayout({
   children: React.ReactNode
 }) {
   try {
+    // 쿠키에서 세션 읽기 (먼저 확인하여 즉시 리다이렉트)
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get('admin_session')?.value
+
+    if (!sessionCookie) {
+      // 세션 쿠키가 없으면 즉시 로그인 페이지로 리다이렉트
+      redirect('/admin/login')
+    }
+
     // Firebase Admin 초기화
     initFirebaseAdmin()
 
     if (!adminAuth) {
       console.error('[Admin Layout] Firebase Admin이 초기화되지 않았습니다.')
-      redirect('/admin/login')
-    }
-
-    // 쿠키에서 세션 읽기
-    const cookieStore = await cookies()
-    const sessionCookie = cookieStore.get('admin_session')?.value
-
-    if (!sessionCookie) {
-      // 세션 쿠키가 없으면 로그인 페이지로 리다이렉트
       redirect('/admin/login')
     }
 
@@ -86,9 +90,9 @@ export default async function AdminLayout({
       // 검증 성공 - children 렌더링
       return <>{children}</>
     } catch (error: any) {
-      // 검증 실패 - 로그인 페이지로 리다이렉트
+      // 검증 실패 - 로그인 페이지로 리다이렉트 (에러 파라미터 포함)
       console.warn('[Admin Layout] 세션 쿠키 검증 실패:', error.message)
-      redirect('/admin/login')
+      redirect('/admin/login?error=session_invalid')
     }
   } catch (error: any) {
     // 예외 발생 시 로그인 페이지로 리다이렉트 (500 에러 방지)
