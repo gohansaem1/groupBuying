@@ -12,12 +12,18 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // /admin/login은 반드시 예외 처리하여 통과시킴
-  if (pathname === '/admin/login' || pathname.startsWith('/admin/login/')) {
+  // 예외 처리: /admin/login, /admin/logout, /api/* 는 반드시 통과
+  if (
+    pathname === '/admin/login' ||
+    pathname.startsWith('/admin/login/') ||
+    pathname === '/admin/logout' ||
+    pathname.startsWith('/admin/logout/') ||
+    pathname.startsWith('/api/')
+  ) {
     return NextResponse.next()
   }
 
-  // /admin/* 경로만 보호 (login 제외)
+  // /admin/* 경로만 보호 (위의 예외 경로 제외)
   if (pathname.startsWith('/admin')) {
     const sessionCookie = request.cookies.get('admin_session')?.value
 
@@ -37,5 +43,8 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: '/admin/:path*',
+  matcher: [
+    '/admin/:path*',
+    '/api/admin/:path*',
+  ],
 }
