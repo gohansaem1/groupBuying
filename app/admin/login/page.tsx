@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signInWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '@/lib/firebase/config'
+import { auth, isFirebaseInitialized, getFirebaseInitError } from '@/lib/firebase/config'
 
 export default function AdminLoginPage() {
   const router = useRouter()
@@ -12,7 +12,22 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [firebaseError, setFirebaseError] = useState<string | null>(null)
   // 로그인 페이지는 가드 로직 없이 항상 폼을 표시
+
+  // Firebase 초기화 상태 확인
+  useEffect(() => {
+    if (!isFirebaseInitialized()) {
+      const initError = getFirebaseInitError()
+      if (initError) {
+        console.error('[관리자 로그인] Firebase 초기화 실패:', initError.message)
+        setFirebaseError(initError.message)
+      } else {
+        console.warn('[관리자 로그인] Firebase가 초기화되지 않았습니다.')
+        setFirebaseError('Firebase가 초기화되지 않았습니다. 환경 변수를 확인하세요.')
+      }
+    }
+  }, [])
 
   // URL 쿼리에서 에러 파라미터 확인
   useEffect(() => {
@@ -26,6 +41,14 @@ export default function AdminLoginPage() {
     e.preventDefault()
     setError(null)
     setLoading(true)
+
+    // Firebase 초기화 확인
+    if (!isFirebaseInitialized() || !auth) {
+      const initError = getFirebaseInitError()
+      setError(initError?.message || 'Firebase가 초기화되지 않았습니다. 환경 변수를 확인하세요.')
+      setLoading(false)
+      return
+    }
 
     try {
       // Firebase Client SDK로 이메일/비밀번호 로그인
@@ -65,6 +88,16 @@ export default function AdminLoginPage() {
             <h1 className="text-2xl font-bold text-gray-900">관리자 로그인</h1>
             <p className="mt-2 text-sm text-gray-600">오너 계정 아이디/비밀번호로 로그인하세요</p>
           </div>
+
+          {firebaseError && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-3 mb-6">
+              <h3 className="text-sm font-semibold text-red-800 mb-1">Firebase 초기화 오류</h3>
+              <p className="text-xs text-red-700 mb-2">{firebaseError}</p>
+              <p className="text-xs text-red-600">
+                Vercel 대시보드에서 NEXT_PUBLIC_FIREBASE_* 환경 변수가 설정되어 있는지 확인하세요.
+              </p>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>

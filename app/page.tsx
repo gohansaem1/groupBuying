@@ -6,6 +6,7 @@ import { onAuthChange, signOut, cancelOrganizerApplication } from '@/lib/firebas
 import { User } from 'firebase/auth'
 import { getCurrentUserProfile, UserProfile } from '@/lib/firebase/auth'
 import { getOrganizerRecruitmentStatus } from '@/lib/firebase/admin'
+import { isFirebaseInitialized, getFirebaseInitError } from '@/lib/firebase/config'
 import NavigationHeader from '@/components/NavigationHeader'
 
 export default function Home() {
@@ -14,50 +15,133 @@ export default function Home() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [recruitmentEnabled, setRecruitmentEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [firebaseError, setFirebaseError] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => {
-    const unsubscribe = onAuthChange(async (user) => {
-      setUser(user)
-      if (user) {
-        const [profile, recruitmentStatus] = await Promise.all([
-          getCurrentUserProfile(),
-          getOrganizerRecruitmentStatus()
-        ])
-        setUserProfile(profile)
-        setRecruitmentEnabled(recruitmentStatus)
-        
-        // 닉네임이 없으면 닉네임 설정 페이지로 리다이렉트
-        if (profile && !profile.nickname && window.location.pathname !== '/setup-nickname') {
-          router.push('/setup-nickname')
-          return
-        }
+    // Firebase 초기화 상태 확인
+    if (!isFirebaseInitialized()) {
+      const initError = getFirebaseInitError()
+      if (initError) {
+        console.error('[홈 페이지] Firebase 초기화 실패:', initError.message)
+        setFirebaseError(initError.message)
       } else {
-        setUserProfile(null)
-        setRecruitmentEnabled(false)
+        console.warn('[홈 페이지] Firebase가 초기화되지 않았습니다.')
+        setFirebaseError('Firebase가 초기화되지 않았습니다. 환경 변수를 확인하세요.')
       }
+      // Firebase 초기화 실패 시에도 기본 UI 표시
       setLoading(false)
-    })
+      return
+    }
 
-    // Firebase 응답이 느릴 때 4초 후 로딩 해제 (접속 지연 완화)
-    const fallbackTimer = setTimeout(() => setLoading(false), 4000)
+    let unsubscribe: (() => void) | null = null
+    let isMounted = true
+
+    try {
+      unsubscribe = onAuthChange(async (user) => {
+        if (!isMounted) return
+        
+        setUser(user)
+        if (user) {
+          try {
+            const [profile, recruitmentStatus] = await Promise.all([
+              getCurrentUserProfile(),
+              getOrganizerRecruitmentStatus()
+            ])
+            if (!isMounted) return
+            
+            setUserProfile(profile)
+            setRecruitmentEnabled(recruitmentStatus)
+            
+            // 닉네임이 없으면 닉네임 설정 페이지로 리다이렉트
+            if (profile && !profile.nickname && window.location.pathname !== '/setup-nickname') {
+              router.push('/setup-nickname')
+              return
+            }
+          } catch (error: any) {
+            console.error('[홈 페이지] 프로필 로드 실패:', error)
+            if (!isMounted) return
+            setFirebaseError(`프로필 로드 실패: ${error.message}`)
+          }
+        } else {
+          setUserProfile(null)
+          setRecruitmentEnabled(false)
+        }
+        if (isMounted) {
+          setLoading(false)
+        }
+      })
+    } catch (error: any) {
+      console.error('[홈 페이지] onAuthChange 설정 실패:', error)
+      setFirebaseError(`인증 초기화 실패: ${error.message}`)
+      setLoading(false)
+    }
+
+    // Firebase 응답이 느릴 때 3초 후 로딩 해제 (접속 지연 완화)
+    const fallbackTimer = setTimeout(() => {
+      if (isMounted) {
+        console.warn('[홈 페이지] Firebase 응답 지연으로 인해 로딩 상태를 해제합니다.')
+        setLoading(false)
+      }
+    }, 3000)
+
     return () => {
-      unsubscribe()
+      isMounted = false
+      if (unsubscribe) {
+        unsubscribe()
+      }
       clearTimeout(fallbackTimer)
     }
   }, [router])
-
-  // 리다이렉트 제거 - 모든 사용자가 홈 페이지에 접근 가능
 
   const handleLogin = () => {
     router.push('/login')
   }
 
-  // 로딩 중
+  // Firebase 에러가 있으면 에러 메시지와 함께 기본 UI 표시
+  if (firebaseError) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <h2 className="text-lg font-semibold text-red-800 mb-2">Firebase 초기화 오류</h2>
+            <p className="text-sm text-red-700 mb-2">{firebaseError}</p>
+            <p className="text-xs text-red-600">
+              Vercel 대시보드에서 NEXT_PUBLIC_FIREBASE_* 환경 변수가 설정되어 있는지 확인하세요.
+            </p>
+          </div>
+          
+          {/* 기본 UI는 계속 표시 */}
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-3 sm:mb-4">
+              제주 공동구매 플랫폼
+            </h2>
+            <p className="text-base sm:text-lg lg:text-xl text-gray-600 mb-6 sm:mb-8">
+              함께 모여 더 저렴하게! 제주 지역 공동구매 서비스
+            </p>
+            <button
+              onClick={handleLogin}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 sm:py-4 px-6 sm:px-8 rounded-xl transition-all text-base sm:text-lg shadow-lg shadow-blue-500/50"
+            >
+              시작하기
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 로딩 중 - 최대 3초만 표시
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">로딩 중...</div>
+      <div className="min-h-screen bg-gray-50">
+        <NavigationHeader userProfile={null} currentPage="home" />
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-lg text-gray-600 mb-2">로딩 중...</div>
+            <p className="text-sm text-gray-500">잠시만 기다려주세요</p>
+          </div>
+        </div>
       </div>
     )
   }
