@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signInWithKakao, signInWithTestUser, getCurrentUserProfile, agreeToUserTerms, signOut, onAuthChange } from '@/lib/firebase/auth'
-import { initKakao, waitForKakaoSDK } from '@/lib/firebase/kakao'
+import { signInWithKakaoSDK } from '@/lib/firebase/kakao'
 import TermsAgreementModal from '@/components/TermsAgreementModal'
 
 function LoginPageContent() {
@@ -13,7 +13,6 @@ function LoginPageContent() {
   
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [sdkReady, setSdkReady] = useState(false)
   const [testMode, setTestMode] = useState(false)
   const [testUserId, setTestUserId] = useState('')
   const [showTermsModal, setShowTermsModal] = useState(false)
@@ -39,7 +38,7 @@ function LoginPageContent() {
           if (decodedError.includes('invalid_grant')) {
             errorMessage += ' (인가 코드가 유효하지 않습니다. 다시 로그인해 주세요.)'
           } else if (decodedError.includes('invalid_client')) {
-            errorMessage += ' (REST API 키가 잘못되었습니다. 환경 변수를 확인하세요.)'
+            errorMessage += ' (서버 설정 오류입니다. 관리자에게 문의하세요.)'
           } else if (decodedError.includes('redirect_uri_mismatch')) {
             errorMessage += ' (Redirect URI가 일치하지 않습니다. 카카오 개발자 콘솔에서 확인하세요.)'
           }
@@ -106,21 +105,7 @@ function LoginPageContent() {
       setCheckingAuth(false)
     })
 
-    // 카카오 SDK 초기화
-    const init = async () => {
-      try {
-        // 약간의 지연 후 초기화 (스크립트 로드 시간 확보)
-        await new Promise(resolve => setTimeout(resolve, 500))
-        initKakao()
-        await waitForKakaoSDK()
-        setSdkReady(true)
-      } catch (err: any) {
-        console.error('카카오 SDK 초기화 오류:', err)
-        // SDK 로드 실패해도 계속 진행 (개발 중에는 Google 로그인 사용 가능)
-        setSdkReady(false)
-      }
-    }
-    init()
+    // 카카오 로그인은 SDK 없이 authorize URL로 직접 리다이렉트하므로 초기화 불필요
 
     return () => {
       unsubscribe()
@@ -141,11 +126,6 @@ function LoginPageContent() {
   }
 
   const handleKakaoLogin = async (forceSelectAccount: boolean = false) => {
-    if (!sdkReady) {
-      setError('카카오 SDK가 준비되지 않았습니다. .env.local에 NEXT_PUBLIC_KAKAO_JS_KEY가 설정되어 있는지 확인해 주세요.')
-      return
-    }
-
     setLoading(true)
     setError(null)
 
@@ -153,16 +133,11 @@ function LoginPageContent() {
     if (forceSelectAccount) {
       try {
         console.log('[로그인 페이지] 다른 계정으로 로그인: 기존 세션 로그아웃 중...')
-        // 카카오 세션 로그아웃
-        if (window.Kakao && window.Kakao.isInitialized() && window.Kakao.Auth.getAccessToken()) {
-          await window.Kakao.Auth.logout()
-          console.log('[로그인 페이지] 카카오 세션 로그아웃 완료')
-        }
         // Firebase 로그아웃
         await signOut()
         setCurrentUser(null)
         console.log('[로그인 페이지] 로그아웃 완료, 잠시 대기 후 로그인 시작...')
-        // 카카오 세션 정리를 위한 짧은 지연
+        // 세션 정리를 위한 짧은 지연
         await new Promise(resolve => setTimeout(resolve, 500))
       } catch (err) {
         console.warn('[로그인 페이지] 로그아웃 중 오류 (무시하고 계속):', err)
@@ -172,8 +147,7 @@ function LoginPageContent() {
 
     try {
       console.log('[로그인 페이지] 카카오 웹 로그인 화면으로 이동', { forceSelectAccount })
-      // Auth.authorize()를 호출하면 카카오 웹 로그인 페이지로 리다이렉트됩니다
-      // 이후 콜백에서 토큰을 받아서 처리합니다
+      // authorize URL로 리다이렉트 (페이지가 이동되므로 이후 코드는 실행되지 않음)
       await signInWithKakao(forceSelectAccount)
       // 이 코드는 실행되지 않습니다 (페이지가 리다이렉트되므로)
     } catch (err: any) {
@@ -347,7 +321,7 @@ function LoginPageContent() {
             <div className="space-y-3">
               <button
                 onClick={() => handleKakaoLogin(false)}
-                disabled={loading || !sdkReady}
+                disabled={loading}
                 className="w-full bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold py-3 sm:py-4 px-4 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-yellow-400/50 text-base sm:text-lg"
               >
               {loading ? (
@@ -358,8 +332,6 @@ function LoginPageContent() {
                   </svg>
                   로그인 중...
                 </span>
-              ) : !sdkReady ? (
-                '카카오 SDK 로딩 중...'
               ) : (
                 <>
                   <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
@@ -373,7 +345,7 @@ function LoginPageContent() {
               {/* 다른 계정으로 로그인 버튼 */}
               <button
                 onClick={() => handleKakaoLogin(true)}
-                disabled={loading || !sdkReady}
+                disabled={loading}
                 className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
               >
                 {loading ? '로그인 중...' : '다른 계정으로 로그인'}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { initKakao, waitForKakaoSDK } from '@/lib/firebase/kakao'
+import { signInWithKakaoSDK } from '@/lib/firebase/kakao'
 
 export default function TestKakaoPage() {
   const [testResults, setTestResults] = useState<any[]>([])
@@ -36,7 +36,6 @@ export default function TestKakaoPage() {
       // 테스트 1: 환경 변수 확인
       addResult('환경 변수 확인', 'info', '환경 변수 확인 중...')
       const jsKey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY
-      const restApiKey = process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY
       
       if (!jsKey) {
         addResult('JavaScript 키', 'error', 'NEXT_PUBLIC_KAKAO_JS_KEY가 설정되지 않았습니다.')
@@ -44,32 +43,9 @@ export default function TestKakaoPage() {
         addResult('JavaScript 키', 'success', `설정됨: ${jsKey.substring(0, 10)}...`)
       }
 
-      if (!restApiKey) {
-        addResult('REST API 키', 'error', 'NEXT_PUBLIC_KAKAO_REST_API_KEY가 설정되지 않았습니다.')
-      } else {
-        addResult('REST API 키', 'success', `설정됨: ${restApiKey.substring(0, 10)}...`)
-      }
+      addResult('REST API 키', 'info', 'REST API 키는 서버 전용입니다. 클라이언트에서 확인할 수 없습니다.')
 
-      // 테스트 2: 카카오 SDK 로드 확인
-      addResult('카카오 SDK 로드', 'info', '카카오 SDK 로드 확인 중...')
-      try {
-        initKakao()
-        await waitForKakaoSDK()
-        
-        if (typeof window !== 'undefined' && window.Kakao && window.Kakao.isInitialized()) {
-          addResult('카카오 SDK 초기화', 'success', '카카오 SDK가 정상적으로 초기화되었습니다.', {
-            version: window.Kakao?.VERSION || 'unknown',
-            isInitialized: window.Kakao.isInitialized(),
-            hasAuth: !!window.Kakao.Auth,
-          })
-        } else {
-          addResult('카카오 SDK 초기화', 'error', '카카오 SDK가 초기화되지 않았습니다.')
-        }
-      } catch (err: any) {
-        addResult('카카오 SDK 초기화', 'error', `SDK 로드 실패: ${err.message}`)
-      }
-
-      // 테스트 3: 현재 URL 및 Redirect URI 확인
+      // 테스트 2: 현재 URL 및 Redirect URI 확인
       if (typeof window !== 'undefined') {
         addResult('Redirect URI 확인', 'info', 'Redirect URI 확인 중...')
         const currentOrigin = window.location.origin
@@ -78,33 +54,21 @@ export default function TestKakaoPage() {
         addResult('Redirect URI', 'info', redirectUri)
         addResult('Redirect URI 등록 필요', 'warning', `카카오 개발자 콘솔에 다음 URI를 등록하세요:\n${redirectUri}`)
 
-        // 테스트 4: 카카오 로그인 상태 확인
-        if (window.Kakao && window.Kakao.isInitialized()) {
-          addResult('카카오 로그인 상태', 'info', '카카오 로그인 상태 확인 중...')
-          try {
-            const accessToken = window.Kakao.Auth.getAccessToken()
-            if (accessToken) {
-              addResult('카카오 액세스 토큰', 'warning', '이미 로그인된 상태입니다. 로그아웃 후 테스트하세요.', {
-                tokenPrefix: accessToken.substring(0, 20) + '...',
-              })
-            } else {
-              addResult('카카오 액세스 토큰', 'success', '로그인되지 않은 상태입니다.')
-            }
-          } catch (err: any) {
-            addResult('카카오 로그인 상태', 'error', `상태 확인 실패: ${err.message}`)
-          }
-
-          // 테스트 5: authorize 함수 테스트 (실제 호출하지 않고 옵션만 확인)
-          addResult('Authorize 옵션 확인', 'info', 'Authorize 옵션 확인 중...')
-          const authorizeOptions = {
-            redirectUri: redirectUri,
-            throughTalk: false,
-          }
-          addResult('Authorize 옵션', 'success', '옵션이 올바르게 설정되었습니다.', authorizeOptions)
+        // 테스트 3: authorize URL 생성 확인
+        if (jsKey) {
+          addResult('Authorize URL 생성', 'info', 'Authorize URL 생성 확인 중...')
+          const authorizeUrl = new URL('https://kauth.kakao.com/oauth/authorize')
+          authorizeUrl.searchParams.set('client_id', jsKey)
+          authorizeUrl.searchParams.set('redirect_uri', redirectUri)
+          authorizeUrl.searchParams.set('response_type', 'code')
+          authorizeUrl.searchParams.set('throughTalk', 'false')
+          addResult('Authorize URL', 'success', 'Authorize URL이 올바르게 생성되었습니다.', {
+            url: authorizeUrl.toString(),
+          })
         }
       }
 
-      // 테스트 6: 서버 API 확인 (콜백 엔드포인트 존재 확인)
+      // 테스트 4: 서버 API 확인 (콜백 엔드포인트 존재 확인)
       addResult('서버 API 확인', 'info', '서버 API 엔드포인트 확인 중...')
       try {
         // HEAD 요청으로 엔드포인트 존재 확인
@@ -136,8 +100,9 @@ export default function TestKakaoPage() {
       return
     }
 
-    if (!window.Kakao || !window.Kakao.isInitialized()) {
-      alert('카카오 SDK가 초기화되지 않았습니다. 먼저 테스트를 실행하세요.')
+    const jsKey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY
+    if (!jsKey) {
+      alert('NEXT_PUBLIC_KAKAO_JS_KEY가 설정되지 않았습니다.')
       return
     }
 
@@ -146,10 +111,14 @@ export default function TestKakaoPage() {
       const redirectUri = `${window.location.origin}/api/auth/kakao/callback`
       console.log('[테스트] 카카오 로그인 시작:', { redirectUri })
       
-      window.Kakao.Auth.authorize({
-        redirectUri: redirectUri,
-        throughTalk: false,
-      })
+      // authorize URL 생성 및 리다이렉트
+      const authorizeUrl = new URL('https://kauth.kakao.com/oauth/authorize')
+      authorizeUrl.searchParams.set('client_id', jsKey)
+      authorizeUrl.searchParams.set('redirect_uri', redirectUri)
+      authorizeUrl.searchParams.set('response_type', 'code')
+      authorizeUrl.searchParams.set('throughTalk', 'false')
+      
+      window.location.href = authorizeUrl.toString()
       
       // 이 코드는 실행되지 않습니다 (페이지가 리다이렉트되므로)
     } catch (err: any) {
@@ -192,7 +161,7 @@ export default function TestKakaoPage() {
             
             <button
               onClick={testLogin}
-              disabled={loading || (typeof window !== 'undefined' && window.Kakao && !window.Kakao.isInitialized())}
+              disabled={loading}
               className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               실제 로그인 테스트
@@ -264,7 +233,7 @@ export default function TestKakaoPage() {
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" className="w-4 h-4" />
-              <span>Vercel 환경 변수에 <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_KAKAO_REST_API_KEY</code> 설정</span>
+              <span>Vercel 환경 변수에 <code className="bg-gray-100 px-1 rounded">KAKAO_REST_API_KEY</code> 설정 (서버 전용, NEXT_PUBLIC_ 없음)</span>
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" className="w-4 h-4" />

@@ -64,7 +64,7 @@ export async function verifyKakaoWebhook(setToken: string): Promise<Verification
     }
 
     // 5. audience 확인 (REST API 키와 일치해야 함)
-    const restApiKey = process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY || process.env.KAKAO_REST_API_KEY
+    const restApiKey = process.env.KAKAO_REST_API_KEY
     if (!restApiKey) {
       console.warn('KAKAO_REST_API_KEY가 설정되지 않았습니다.')
     } else if (payload.aud !== restApiKey) {

@@ -85,15 +85,14 @@ export async function GET(request: NextRequest) {
 
     console.log('[카카오 콜백] 인가 코드 수신:', code.substring(0, 20) + '...')
 
-    // 카카오 REST API 키 (서버 사이드에서 사용)
+    // 카카오 REST API 키 (서버 전용 환경변수)
     // REST API 키는 카카오 개발자 콘솔 > 내 애플리케이션 > 앱 키에서 확인 가능
-    // 중요: JS 키와 REST API 키는 다를 수 있습니다. REST API 키를 사용해야 합니다.
-    const REST_API_KEY = process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY || process.env.NEXT_PUBLIC_KAKAO_JS_KEY
+    // 중요: 서버에서만 사용하므로 NEXT_PUBLIC_ 접두사 없이 사용
+    const REST_API_KEY = process.env.KAKAO_REST_API_KEY
     const REDIRECT_URI = `${request.nextUrl.origin}/api/auth/kakao/callback`
 
     console.log('[카카오 콜백] 설정 확인:', {
-      hasRestApiKey: !!process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY,
-      hasJsKey: !!process.env.NEXT_PUBLIC_KAKAO_JS_KEY,
+      hasRestApiKey: !!REST_API_KEY,
       restApiKeyPrefix: REST_API_KEY ? `${REST_API_KEY.substring(0, 10)}...` : '없음',
       redirectUri: REDIRECT_URI,
       codeLength: code?.length,
@@ -101,10 +100,7 @@ export async function GET(request: NextRequest) {
 
     if (!REST_API_KEY) {
       console.error('[카카오 콜백] REST API 키가 설정되지 않았습니다.')
-      console.error('[카카오 콜백] 환경 변수 확인:', {
-        NEXT_PUBLIC_KAKAO_REST_API_KEY: !!process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY,
-        NEXT_PUBLIC_KAKAO_JS_KEY: !!process.env.NEXT_PUBLIC_KAKAO_JS_KEY,
-      })
+      console.error('[카카오 콜백] 서버 환경 변수 KAKAO_REST_API_KEY를 설정하세요.')
       return NextResponse.redirect(new URL('/login?error=no_api_key', request.url))
     }
 
@@ -145,7 +141,6 @@ export async function GET(request: NextRequest) {
         redirectUri: REDIRECT_URI,
         hasRestApiKey: !!REST_API_KEY,
         restApiKeyPrefix: REST_API_KEY ? `${REST_API_KEY.substring(0, 10)}...` : '없음',
-        restApiKeySource: process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY ? 'REST_API_KEY' : 'JS_KEY',
       })
       
       // 에러 메시지를 더 자세히 전달
@@ -157,7 +152,7 @@ export async function GET(request: NextRequest) {
         console.error('[카카오 콜백] 에러 데이터:', errorData)
         
         if (errorData.error === 'invalid_client') {
-          userFriendlyMessage = 'REST API 키가 잘못되었습니다. Vercel 환경 변수에 NEXT_PUBLIC_KAKAO_REST_API_KEY가 올바르게 설정되어 있는지 확인하세요.'
+          userFriendlyMessage = '서버 설정 오류입니다. 관리자에게 문의하세요.'
         } else if (errorData.error === 'redirect_uri_mismatch') {
           userFriendlyMessage = 'Redirect URI가 일치하지 않습니다. 카카오 개발자 콘솔에서 Redirect URI를 확인하세요.'
         } else if (errorData.error === 'invalid_grant') {

@@ -83,37 +83,21 @@ export async function signInWithTestUser(userId: string): Promise<{ user: User; 
 }
 
 export async function signOut() {
-  // 카카오 로그인 세션도 함께 로그아웃
-  if (typeof window !== 'undefined' && window.Kakao && window.Kakao.isInitialized()) {
+  // 카카오 로컬 스토리지 정리 (완전한 로그아웃)
+  if (typeof window !== 'undefined' && typeof Storage !== 'undefined') {
     try {
-      // 카카오 액세스 토큰이 있는지 확인
-      const accessToken = window.Kakao.Auth.getAccessToken()
-      if (accessToken) {
-        // 카카오 로그아웃 (서버에 로그아웃 요청)
-        await window.Kakao.Auth.logout()
-        console.log('[로그아웃] 카카오 세션 로그아웃 완료')
-      }
-      
-      // 카카오 로컬 스토리지도 정리 (완전한 로그아웃)
-      try {
-        // 카카오 SDK가 사용하는 로컬 스토리지 키들 정리
-        if (typeof Storage !== 'undefined') {
-          const keysToRemove: string[] = []
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i)
-            if (key && (key.includes('kakao') || key.includes('Kakao'))) {
-              keysToRemove.push(key)
-            }
-          }
-          keysToRemove.forEach(key => localStorage.removeItem(key))
-          console.log('[로그아웃] 카카오 로컬 스토리지 정리 완료')
+      // 카카오 관련 로컬 스토리지 키들 정리
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && (key.includes('kakao') || key.includes('Kakao'))) {
+          keysToRemove.push(key)
         }
-      } catch (storageError) {
-        console.warn('[로그아웃] 로컬 스토리지 정리 실패 (무시 가능):', storageError)
       }
-    } catch (error) {
-      console.warn('[로그아웃] 카카오 세션 로그아웃 실패 (무시 가능):', error)
-      // 카카오 로그아웃 실패해도 Firebase 로그아웃은 진행
+      keysToRemove.forEach(key => localStorage.removeItem(key))
+      console.log('[로그아웃] 카카오 로컬 스토리지 정리 완료')
+    } catch (storageError) {
+      console.warn('[로그아웃] 로컬 스토리지 정리 실패 (무시 가능):', storageError)
     }
   }
   
