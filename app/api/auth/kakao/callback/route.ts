@@ -73,44 +73,60 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get('error')
     const errorDescription = searchParams.get('error_description')
 
-    // 에러가 있으면 로그인 페이지로 리다이렉트
+    // 카카오에서 직접 전달된 에러 처리
     if (error) {
-      console.error('카카오 로그인 에러:', error, errorDescription)
-      return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(errorDescription || error)}`, request.url))
+      console.error('[카카오 콜백] 카카오에서 전달된 에러:', {
+        error,
+        errorDescription,
+        url: request.url,
+      })
+      const errorParam = error ? `error=${encodeURIComponent(error)}` : ''
+      const descParam = errorDescription ? `&desc=${encodeURIComponent(errorDescription)}` : ''
+      return NextResponse.redirect(new URL(`/login?${errorParam}${descParam}`, request.url))
     }
 
+    // code 파라미터 체크
     if (!code) {
+      console.error('[카카오 콜백] 인가 코드가 없습니다:', {
+        url: request.url,
+        searchParams: Object.fromEntries(searchParams.entries()),
+      })
       return NextResponse.redirect(new URL('/login?error=no_code', request.url))
     }
 
-    console.log('[카카오 콜백] 인가 코드 수신:', code.substring(0, 20) + '...')
+    console.log('[카카오 콜백] 인가 코드 수신:', {
+      codePrefix: code.substring(0, 20) + '...',
+      codeLength: code.length,
+    })
 
-    // 카카오 REST API 키 (서버 전용 환경변수)
-    // REST API 키는 카카오 개발자 콘솔 > 내 애플리케이션 > 앱 키에서 확인 가능
-    // 중요: 서버에서만 사용하므로 NEXT_PUBLIC_ 접두사 없이 사용
+    // 카카오 REST API 키 확인 (서버 전용 환경변수)
     const REST_API_KEY = process.env.KAKAO_REST_API_KEY
-    const REDIRECT_URI = `${request.nextUrl.origin}/api/auth/kakao/callback`
+    if (!REST_API_KEY) {
+      console.error('[카카오 콜백] REST API 키가 설정되지 않았습니다.', {
+        hasRestApiKey: false,
+        envKeys: Object.keys(process.env).filter(key => key.includes('KAKAO')),
+      })
+      return NextResponse.redirect(new URL('/login?error=missing_env&desc=KAKAO_REST_API_KEY가 설정되지 않았습니다', request.url))
+    }
+
+    // Redirect URI 설정 (환경변수 우선, 없으면 동적 생성)
+    const REDIRECT_URI = process.env.KAKAO_REDIRECT_URI || `${request.nextUrl.origin}/api/auth/kakao/callback`
 
     console.log('[카카오 콜백] 설정 확인:', {
       hasRestApiKey: !!REST_API_KEY,
       restApiKeyPrefix: REST_API_KEY ? `${REST_API_KEY.substring(0, 10)}...` : '없음',
       redirectUri: REDIRECT_URI,
-      codeLength: code?.length,
+      redirectUriSource: process.env.KAKAO_REDIRECT_URI ? 'env' : 'dynamic',
+      codeLength: code.length,
     })
-
-    if (!REST_API_KEY) {
-      console.error('[카카오 콜백] REST API 키가 설정되지 않았습니다.')
-      console.error('[카카오 콜백] 서버 환경 변수 KAKAO_REST_API_KEY를 설정하세요.')
-      return NextResponse.redirect(new URL('/login?error=no_api_key', request.url))
-    }
 
     // 인가 코드를 액세스 토큰으로 교환
     console.log('[카카오 콜백] 액세스 토큰 교환 시작')
     console.log('[카카오 콜백] 요청 파라미터:', {
       grant_type: 'authorization_code',
-      client_id: REST_API_KEY ? `${REST_API_KEY.substring(0, 10)}...` : '없음',
+      client_id: `${REST_API_KEY.substring(0, 10)}...`,
       redirect_uri: REDIRECT_URI,
-      code: code ? `${code.substring(0, 20)}...` : '없음',
+      code: `${code.substring(0, 20)}...`,
     })
 
     const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
@@ -126,54 +142,68 @@ export async function GET(request: NextRequest) {
       }),
     })
 
+    const responseStatus = tokenResponse.status
+    const responseStatusText = tokenResponse.statusText
+    const responseOk = tokenResponse.ok
+
     console.log('[카카오 콜백] 토큰 교환 응답:', {
-      status: tokenResponse.status,
-      statusText: tokenResponse.statusText,
-      ok: tokenResponse.ok,
+      status: responseStatus,
+      statusText: responseStatusText,
+      ok: responseOk,
     })
 
-    if (!tokenResponse.ok) {
+    if (!responseOk) {
       const errorText = await tokenResponse.text()
-      console.error('[카카오 콜백] 토큰 교환 오류 상세:', {
-        status: tokenResponse.status,
-        statusText: tokenResponse.statusText,
+      
+      // 상세 로깅 (Vercel Functions 로그에서 확인 가능)
+      console.error('[카카오 콜백] 토큰 교환 실패 - 상세 정보:', {
+        status: responseStatus,
+        statusText: responseStatusText,
         errorText: errorText,
-        redirectUri: REDIRECT_URI,
-        hasRestApiKey: !!REST_API_KEY,
-        restApiKeyPrefix: REST_API_KEY ? `${REST_API_KEY.substring(0, 10)}...` : '없음',
+        requestParams: {
+          grant_type: 'authorization_code',
+          client_id: `${REST_API_KEY.substring(0, 10)}...`,
+          redirect_uri: REDIRECT_URI,
+          code: `${code.substring(0, 20)}...`,
+        },
+        environment: {
+          hasRestApiKey: !!REST_API_KEY,
+          restApiKeyLength: REST_API_KEY.length,
+          redirectUriSource: process.env.KAKAO_REDIRECT_URI ? 'env' : 'dynamic',
+        },
       })
       
-      // 에러 메시지를 더 자세히 전달
-      let errorMessage = 'token_exchange_failed'
-      let userFriendlyMessage = '카카오 로그인 처리 중 오류가 발생했습니다.'
+      // 카카오 에러 응답 파싱
+      let kakaoError = 'unknown_error'
+      let kakaoErrorDescription = '알 수 없는 오류가 발생했습니다.'
       
       try {
         const errorData = JSON.parse(errorText)
-        console.error('[카카오 콜백] 에러 데이터:', errorData)
+        console.error('[카카오 콜백] 카카오 에러 응답:', errorData)
         
-        if (errorData.error === 'invalid_client') {
-          userFriendlyMessage = '서버 설정 오류입니다. 관리자에게 문의하세요.'
-        } else if (errorData.error === 'redirect_uri_mismatch') {
-          userFriendlyMessage = 'Redirect URI가 일치하지 않습니다. 카카오 개발자 콘솔에서 Redirect URI를 확인하세요.'
-        } else if (errorData.error === 'invalid_grant') {
-          userFriendlyMessage = '인가 코드가 유효하지 않습니다. 다시 로그인해 주세요.'
-        } else if (errorData.error_description) {
-          userFriendlyMessage = `카카오 로그인 오류: ${errorData.error_description}`
-        }
+        kakaoError = errorData.error || 'unknown_error'
+        kakaoErrorDescription = errorData.error_description || kakaoErrorDescription
         
-        if (errorData.error) {
-          errorMessage = `${errorMessage}_${errorData.error}`
-        }
-        if (errorData.error_description) {
-          errorMessage = `${errorMessage}_${encodeURIComponent(errorData.error_description)}`
-        }
-      } catch (e) {
+        // 추가 로깅
+        console.error('[카카오 콜백] 파싱된 에러:', {
+          error: kakaoError,
+          errorDescription: kakaoErrorDescription,
+          fullErrorData: errorData,
+        })
+      } catch (parseError) {
         // JSON 파싱 실패 시 원본 텍스트 사용
-        console.error('[카카오 콜백] 에러 텍스트 파싱 실패:', e)
-        errorMessage = `${errorMessage}_${encodeURIComponent(errorText.substring(0, 100))}`
+        console.error('[카카오 콜백] 에러 텍스트 파싱 실패:', {
+          parseError,
+          errorText: errorText.substring(0, 500),
+        })
+        kakaoErrorDescription = errorText.substring(0, 200)
       }
       
-      return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(userFriendlyMessage)}`, request.url))
+      // 에러와 설명을 쿼리 파라미터로 전달
+      const errorParam = `error=${encodeURIComponent(kakaoError)}`
+      const descParam = `&desc=${encodeURIComponent(kakaoErrorDescription)}`
+      
+      return NextResponse.redirect(new URL(`/login?${errorParam}${descParam}`, request.url))
     }
 
     const tokenData = await tokenResponse.json()

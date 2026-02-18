@@ -29,19 +29,18 @@ function LoginPageContent() {
 
       if (error) {
         const decodedError = decodeURIComponent(error)
-        console.error('[로그인 페이지] 콜백 에러:', decodedError)
+        const desc = searchParams.get('desc')
+        const decodedDesc = desc ? decodeURIComponent(desc) : null
         
-        // 에러 메시지 개선
+        console.error('[로그인 페이지] 콜백 에러:', {
+          error: decodedError,
+          description: decodedDesc,
+        })
+        
+        // 에러와 설명을 그대로 표시 (사용자 친화적 메시지로 변환하지 않음)
         let errorMessage = decodedError
-        if (decodedError.includes('token_exchange_failed')) {
-          errorMessage = '카카오 로그인 처리 중 오류가 발생했습니다. 카카오 개발자 콘솔에서 Redirect URI가 정확히 등록되어 있는지 확인하세요.'
-          if (decodedError.includes('invalid_grant')) {
-            errorMessage += ' (인가 코드가 유효하지 않습니다. 다시 로그인해 주세요.)'
-          } else if (decodedError.includes('invalid_client')) {
-            errorMessage += ' (서버 설정 오류입니다. 관리자에게 문의하세요.)'
-          } else if (decodedError.includes('redirect_uri_mismatch')) {
-            errorMessage += ' (Redirect URI가 일치하지 않습니다. 카카오 개발자 콘솔에서 확인하세요.)'
-          }
+        if (decodedDesc) {
+          errorMessage = `${decodedError}: ${decodedDesc}`
         }
         
         setError(errorMessage)
