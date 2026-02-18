@@ -99,10 +99,11 @@ export async function GET(request: NextRequest) {
       codeLength: code.length,
     })
 
-    // 환경변수 체크 (서버 시작 시 또는 요청 처리 시)
-    const REST_API_KEY = process.env.KAKAO_REST_API_KEY
-    const CLIENT_SECRET = process.env.KAKAO_CLIENT_SECRET // 선택사항: 카카오 콘솔에서 Client Secret 사용이 ON인 경우만 필요
+    // 환경변수 체크 및 검증 (서버 시작 시 또는 요청 처리 시)
+    let REST_API_KEY = process.env.KAKAO_REST_API_KEY
+    let CLIENT_SECRET = process.env.KAKAO_CLIENT_SECRET // 선택사항: 카카오 콘솔에서 Client Secret 사용이 ON인 경우만 필요
     
+    // REST API 키 존재 확인
     if (!REST_API_KEY) {
       console.error('[카카오 콜백] 환경변수 누락:', {
         missing: 'KAKAO_REST_API_KEY',
@@ -111,10 +112,40 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/login?error=missing_env&desc=KAKAO_REST_API_KEY가 설정되지 않았습니다', request.url))
     }
 
+    // REST API 키 공백 제거 및 검증
+    const REST_API_KEY_ORIGINAL = REST_API_KEY
+    REST_API_KEY = REST_API_KEY.trim()
+    if (REST_API_KEY_ORIGINAL !== REST_API_KEY) {
+      console.warn('[카카오 콜백] REST API 키에 공백이 포함되어 있어 제거했습니다:', {
+        originalLength: REST_API_KEY_ORIGINAL.length,
+        trimmedLength: REST_API_KEY.length,
+      })
+    }
+    if (!REST_API_KEY) {
+      console.error('[카카오 콜백] REST API 키가 공백만 포함되어 있습니다.')
+      return NextResponse.redirect(new URL('/login?error=missing_env&desc=KAKAO_REST_API_KEY가 유효하지 않습니다', request.url))
+    }
+
+    // Client Secret 공백 제거 (있는 경우)
+    if (CLIENT_SECRET) {
+      const CLIENT_SECRET_ORIGINAL = CLIENT_SECRET
+      CLIENT_SECRET = CLIENT_SECRET.trim()
+      if (CLIENT_SECRET_ORIGINAL !== CLIENT_SECRET) {
+        console.warn('[카카오 콜백] Client Secret에 공백이 포함되어 있어 제거했습니다:', {
+          originalLength: CLIENT_SECRET_ORIGINAL.length,
+          trimmedLength: CLIENT_SECRET.length,
+        })
+      }
+      if (!CLIENT_SECRET) {
+        console.warn('[카카오 콜백] Client Secret이 공백만 포함되어 있어 무시합니다.')
+        CLIENT_SECRET = undefined
+      }
+    }
+
     // Redirect URI 설정 (환경변수 우선, 없으면 동적 생성)
     const REDIRECT_URI = process.env.KAKAO_REDIRECT_URI || `${request.nextUrl.origin}/api/auth/kakao/callback`
 
-    // 디버깅용: 키 전체가 아닌 길이와 앞 4글자만 출력
+    // 디버깅용: 키 전체가 아닌 길이와 앞 4글자만 출력 (보안)
     console.log('[카카오 콜백] 환경변수 확인:', {
       restApiKeyLength: REST_API_KEY.length,
       restApiKeyPrefix: REST_API_KEY.substring(0, 4),
@@ -145,20 +176,28 @@ export async function GET(request: NextRequest) {
       console.log('[카카오 콜백] Client Secret 없음 (카카오 콘솔에서 Client Secret 사용이 OFF인 경우 정상)')
     }
     
-    console.log('[카카오 콜백] 요청 파라미터:', {
-      grant_type: tokenParams.grant_type,
-      client_id: `${REST_API_KEY.substring(0, 4)}... (길이: ${REST_API_KEY.length})`,
-      redirect_uri: REDIRECT_URI,
-      code: `${code.substring(0, 20)}...`,
+    // 실제 요청 body 생성
+    const requestBody = new URLSearchParams(tokenParams)
+    
+    // 디버깅용: 민감정보 제외하고 파라미터 정보만 출력 (보안)
+    console.log('[카카오 콜백] 토큰 요청 준비:', {
+      파라미터개수: Object.keys(tokenParams).length,
+      파라미터키: Object.keys(tokenParams),
+      client_id_길이: REST_API_KEY.length,
+      client_id_앞4글자: REST_API_KEY.substring(0, 4),
       hasClientSecret: !!CLIENT_SECRET,
+      clientSecret_길이: CLIENT_SECRET ? CLIENT_SECRET.length : 0,
+      clientSecret_앞4글자: CLIENT_SECRET ? CLIENT_SECRET.substring(0, 4) : '없음',
+      redirectUri: REDIRECT_URI,
+      code_앞20글자: code.substring(0, 20) + '...',
     })
 
     const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
       },
-      body: new URLSearchParams(tokenParams),
+      body: requestBody,
     })
 
     const responseStatus = tokenResponse.status
@@ -175,19 +214,19 @@ export async function GET(request: NextRequest) {
       const errorText = await tokenResponse.text()
       
       // 상세 로깅 (Vercel Functions 로그에서 확인 가능)
-      // 디버깅용: 키 전체가 아닌 길이와 앞 4글자만 출력
-      console.error('[카카오 콜백] 토큰 교환 실패 - 상세 정보:', {
+      // 디버깅용: 키 전체가 아닌 길이와 앞 4글자만 출력 (보안)
+      console.error('[카카오 콜백] 토큰 교환 실패:', {
         status: responseStatus,
         statusText: responseStatusText,
-        errorText: errorText,
         requestParams: {
           grant_type: 'authorization_code',
-          client_id: `${REST_API_KEY.substring(0, 4)}... (길이: ${REST_API_KEY.length})`,
+          client_id_길이: REST_API_KEY.length,
+          client_id_앞4글자: REST_API_KEY.substring(0, 4),
           redirect_uri: REDIRECT_URI,
-          code: `${code.substring(0, 20)}...`,
+          code_앞20글자: code.substring(0, 20) + '...',
           hasClientSecret: !!CLIENT_SECRET,
-          clientSecretLength: CLIENT_SECRET ? CLIENT_SECRET.length : 0,
-          clientSecretPrefix: CLIENT_SECRET ? CLIENT_SECRET.substring(0, 4) : '없음',
+          clientSecret_길이: CLIENT_SECRET ? CLIENT_SECRET.length : 0,
+          clientSecret_앞4글자: CLIENT_SECRET ? CLIENT_SECRET.substring(0, 4) : '없음',
         },
         environment: {
           hasRestApiKey: !!REST_API_KEY,
@@ -204,22 +243,24 @@ export async function GET(request: NextRequest) {
       
       try {
         const errorData = JSON.parse(errorText)
-        console.error('[카카오 콜백] 카카오 에러 응답:', errorData)
+        console.error('[카카오 콜백] 카카오 에러 응답:', {
+          error: errorData.error,
+          error_description: errorData.error_description,
+        })
         
         kakaoError = errorData.error || 'unknown_error'
         kakaoErrorDescription = errorData.error_description || kakaoErrorDescription
         
-        // 추가 로깅
-        console.error('[카카오 콜백] 파싱된 에러:', {
-          error: kakaoError,
-          errorDescription: kakaoErrorDescription,
-          fullErrorData: errorData,
-        })
+        // invalid_client 에러인 경우 Client Secret 관련 안내 추가
+        if (kakaoError === 'invalid_client') {
+          const clientSecretGuide = '카카오 개발자 콘솔 > 제품 설정 > 카카오 로그인 > 보안 > Client Secret 사용 여부와 환경변수 KAKAO_CLIENT_SECRET 설정이 일치하는지 확인하세요.'
+          kakaoErrorDescription = `${kakaoErrorDescription} (${clientSecretGuide})`
+        }
       } catch (parseError) {
         // JSON 파싱 실패 시 원본 텍스트 사용
         console.error('[카카오 콜백] 에러 텍스트 파싱 실패:', {
-          parseError,
-          errorText: errorText.substring(0, 500),
+          parseError: parseError instanceof Error ? parseError.message : String(parseError),
+          errorText_앞500글자: errorText.substring(0, 500),
         })
         kakaoErrorDescription = errorText.substring(0, 200)
       }
