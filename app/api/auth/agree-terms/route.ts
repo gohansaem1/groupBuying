@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/firebase/config'
-import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore'
-import { db } from '@/lib/firebase/config'
+// 서버 사이드 API 라우트에서는 Firebase Client SDK를 사용하지 않습니다.
+// 필요시 Firebase Admin SDK를 사용하세요.
 
 export async function POST(request: NextRequest) {
   try {

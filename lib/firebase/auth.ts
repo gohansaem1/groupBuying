@@ -102,21 +102,11 @@ export async function signOut() {
   }
   
   // Firebase 로그아웃
-  if (!auth) {
-    console.error('[로그아웃] Firebase가 초기화되지 않았습니다.')
-    return
-  }
-  
   await firebaseSignOut(auth)
   console.log('[로그아웃] Firebase 로그아웃 완료')
 }
 
 export async function getCurrentUserProfile(): Promise<UserProfile | null> {
-  if (!auth || !db) {
-    console.error('[getCurrentUserProfile] Firebase가 초기화되지 않았습니다.')
-    return null
-  }
-  
   const user = auth.currentUser
   if (!user) return null
   
@@ -132,10 +122,6 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
 
 // 일반 사용자 약관 동의 처리
 export async function agreeToUserTerms(): Promise<void> {
-  if (!auth || !db) {
-    throw new Error('Firebase가 초기화되지 않았습니다.')
-  }
-  
   const user = auth.currentUser
   if (!user) {
     throw new Error('로그인이 필요합니다.')
@@ -150,10 +136,6 @@ export async function agreeToUserTerms(): Promise<void> {
 
 // 진행자 약관 동의 처리
 export async function agreeToOrganizerTerms(): Promise<void> {
-  if (!auth || !db) {
-    throw new Error('Firebase가 초기화되지 않았습니다.')
-  }
-  
   const user = auth.currentUser
   if (!user) {
     throw new Error('로그인이 필요합니다.')
@@ -168,10 +150,6 @@ export async function agreeToOrganizerTerms(): Promise<void> {
 
 // 닉네임 설정 (변경 포함)
 export async function setNickname(nickname: string, currentNickname?: string | null): Promise<void> {
-  if (!auth || !db) {
-    throw new Error('Firebase가 초기화되지 않았습니다.')
-  }
-  
   const user = auth.currentUser
   if (!user) {
     throw new Error('로그인이 필요합니다.')
@@ -247,10 +225,6 @@ export async function setNickname(nickname: string, currentNickname?: string | n
 
 // 승인 요청 취소 (organizer_pending -> user)
 export async function cancelOrganizerApplication(): Promise<void> {
-  if (!auth || !db) {
-    throw new Error('Firebase가 초기화되지 않았습니다.')
-  }
-  
   const user = auth.currentUser
   if (!user) {
     throw new Error('로그인이 필요합니다.')
@@ -278,20 +252,11 @@ export async function cancelOrganizerApplication(): Promise<void> {
 }
 
 export function onAuthChange(callback: (user: User | null) => void) {
-  // Firebase 초기화 확인
-  if (!auth) {
-    console.error('[Firebase Auth] Firebase가 초기화되지 않았습니다. 환경 변수를 확인하세요.')
-    // 즉시 null로 콜백 호출하여 무한 로딩 방지
-    callback(null)
-    // 빈 unsubscribe 함수 반환
-    return () => {}
-  }
-  
   try {
     return onAuthStateChanged(auth, callback)
   } catch (error: any) {
     console.error('[Firebase Auth] onAuthStateChanged 실패:', error)
-    // 에러 발생 시 즉시 null로 콜백 호출
+    // 에러 발생 시 즉시 null로 콜백 호출하여 무한 로딩 방지
     callback(null)
     return () => {}
   }
