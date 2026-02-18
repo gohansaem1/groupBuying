@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useRef } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
 import { onAuthChange } from '@/lib/firebase/auth'
 import { User } from 'firebase/auth'
 import { getCurrentUserProfile, UserProfile } from '@/lib/firebase/auth'
@@ -14,12 +14,25 @@ interface AuthGuardProps {
 
 export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [firebaseError, setFirebaseError] = useState<string | null>(null)
+  
+  // useRef를 사용하여 컴포넌트 생명주기 동안 유지되는 값들 추적
+  const timeoutExecutedRef = useRef(false)
+  const fallbackTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const authChangeCompletedRef = useRef(false)
 
   useEffect(() => {
+    // /admin 경로에서는 AuthGuard를 사용하지 않음 (서버 사이드 세션 쿠키로 보호)
+    if (pathname?.startsWith('/admin')) {
+      console.warn('[AuthGuard] /admin 경로에서는 AuthGuard를 사용하지 않습니다. 서버 사이드 세션 쿠키로 보호됩니다.')
+      setLoading(false)
+      return
+    }
+
     // Firebase 초기화 상태 확인
     if (!isFirebaseInitialized()) {
       const initError = getFirebaseInitError()
@@ -34,27 +47,32 @@ export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
       return
     }
 
+    // 이미 타임아웃이 실행되었으면 재실행 방지
+    if (timeoutExecutedRef.current) {
+      return
+    }
+
     let unsubscribe: (() => void) | null = null
     let isMounted = true
-    let timeoutExecuted = false // 타임아웃이 이미 실행되었는지 추적
-    let fallbackTimer: NodeJS.Timeout | null = null
 
     try {
       unsubscribe = onAuthChange(async (user) => {
         if (!isMounted) return
         
         // 타임아웃이 이미 실행되었으면 무시
-        if (timeoutExecuted) return
+        if (timeoutExecutedRef.current) return
         
         // 타임아웃 타이머 정리
-        if (fallbackTimer) {
-          clearTimeout(fallbackTimer)
-          fallbackTimer = null
+        if (fallbackTimerRef.current) {
+          clearTimeout(fallbackTimerRef.current)
+          fallbackTimerRef.current = null
         }
+        
+        authChangeCompletedRef.current = true
         
         if (!user) {
           // 현재 URL을 returnUrl로 넘겨 로그인 페이지로 리다이렉트
-          const currentPath = window.location.pathname
+          const currentPath = pathname || window.location.pathname
           router.push(`/login?returnUrl=${encodeURIComponent(currentPath)}`)
           return
         }
@@ -87,9 +105,9 @@ export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
       })
       
       // Firebase 응답이 느릴 때 3초 후 로딩 해제 (한 번만 실행)
-      fallbackTimer = setTimeout(() => {
-        if (isMounted && !timeoutExecuted) {
-          timeoutExecuted = true
+      fallbackTimerRef.current = setTimeout(() => {
+        if (isMounted && !authChangeCompletedRef.current && !timeoutExecutedRef.current) {
+          timeoutExecutedRef.current = true
           console.warn('[AuthGuard] Firebase 응답 지연으로 인해 로딩 상태를 해제합니다.')
           setLoading(false)
         }
@@ -102,15 +120,15 @@ export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
 
     return () => {
       isMounted = false
-      timeoutExecuted = true // cleanup 시 타임아웃 비활성화
       if (unsubscribe) {
         unsubscribe()
       }
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer)
+      if (fallbackTimerRef.current) {
+        clearTimeout(fallbackTimerRef.current)
+        fallbackTimerRef.current = null
       }
     }
-  }, [router, allowedRoles])
+  }, [router, pathname, allowedRoles])
 
   // Firebase 에러가 있으면 에러 메시지 표시
   if (firebaseError) {
