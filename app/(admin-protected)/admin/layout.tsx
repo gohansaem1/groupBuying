@@ -2,7 +2,7 @@
  * 관리자 레이아웃
  * 
  * 서버 컴포넌트에서 세션 쿠키를 검증합니다.
- * /admin/login은 별도 layout을 사용하므로 여기서는 검증되지 않습니다.
+ * Route Group (admin-protected)을 사용하여 /admin/login은 이 레이아웃의 자식이 아닙니다.
  */
 
 import { cookies, headers } from 'next/headers'
