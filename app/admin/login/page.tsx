@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '@/lib/firebase/config'
@@ -11,6 +11,33 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [checkingSession, setCheckingSession] = useState(true)
+
+  // 페이지 로드 시 세션 확인 (이미 로그인되어 있으면 /admin으로 이동)
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const response = await fetch('/api/admin/checkSession', {
+          method: 'GET',
+          credentials: 'include',
+        })
+        
+        if (response.ok) {
+          // 세션이 유효하면 /admin으로 이동
+          const redirect = new URLSearchParams(window.location.search).get('redirect') || '/admin'
+          router.replace(redirect)
+          return
+        }
+      } catch (err) {
+        // 세션 체크 실패는 무시 (로그인 폼 표시)
+        console.log('[관리자 로그인] 세션 확인 실패 (정상):', err)
+      } finally {
+        setCheckingSession(false)
+      }
+    }
+
+    checkSession()
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,6 +72,15 @@ export default function AdminLoginPage() {
       setError(err.message || '로그인에 실패했습니다.')
       setLoading(false)
     }
+  }
+
+  // 세션 확인 중이면 로딩 표시
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-lg">로딩 중...</div>
+      </div>
+    )
   }
 
   return (

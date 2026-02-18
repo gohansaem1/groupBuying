@@ -12,12 +12,12 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // /admin/login은 제외
-  if (pathname === '/admin/login') {
+  // /admin/login은 반드시 예외 처리하여 통과시킴
+  if (pathname === '/admin/login' || pathname.startsWith('/admin/login/')) {
     return NextResponse.next()
   }
 
-  // /admin/* 경로만 보호
+  // /admin/* 경로만 보호 (login 제외)
   if (pathname.startsWith('/admin')) {
     const sessionCookie = request.cookies.get('admin_session')?.value
 
