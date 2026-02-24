@@ -153,21 +153,6 @@ export default function AdminPage() {
   
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* 관리자 모드 배너 및 로그아웃 버튼 */}
-      <div className="bg-blue-50 border-b border-blue-200 px-4 py-2">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <span className="text-sm text-blue-800 font-medium">
-            관리자 모드 {userProfile?.role === 'owner' && '(오너)'}
-          </span>
-          <button
-            onClick={handleAdminLogout}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1 rounded hover:bg-blue-100 transition-colors"
-          >
-            로그아웃
-          </button>
-        </div>
-      </div>
-      
       <NavigationHeader 
         userProfile={userProfile} 
         currentPage="admin"

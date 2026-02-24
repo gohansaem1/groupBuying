@@ -49,7 +49,8 @@ export default function NavigationHeader({ userProfile: propUserProfile, current
     router.push('/')
   }
 
-  const isAdmin = userProfile?.role === 'admin'
+  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'owner'
+  const isOwner = userProfile?.role === 'owner'
   const isOrganizer = userProfile?.role === 'organizer'
   const isOrganizerPending = userProfile?.role === 'organizer_pending'
 

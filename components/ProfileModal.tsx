@@ -219,7 +219,8 @@ export default function ProfileModal({ isOpen, onClose, userProfile: initialProf
                 <div className="flex justify-between">
                   <span className="text-gray-600">역할:</span>
                   <span className="font-medium text-gray-900">
-                    {userProfile.role === 'admin' ? '관리자' :
+                    {userProfile.role === 'owner' ? '오너' :
+                     userProfile.role === 'admin' ? '관리자' :
                      userProfile.role === 'organizer' ? '진행자' :
                      userProfile.role === 'organizer_pending' ? '승인 요청 중' :
                      '일반 사용자'}
