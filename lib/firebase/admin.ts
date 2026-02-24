@@ -32,6 +32,25 @@ export async function setOrganizerRecruitmentStatus(enabled: boolean): Promise<v
 // 사용자 역할 변경 (관리자만)
 export async function updateUserRole(userId: string, role: 'user' | 'organizer_pending' | 'organizer' | 'admin' | 'owner'): Promise<void> {
   const userRef = doc(db, 'users', userId)
+  
+  // 기존 사용자 역할 확인
+  const userSnap = await getDoc(userRef)
+  if (!userSnap.exists()) {
+    throw new Error('사용자를 찾을 수 없습니다.')
+  }
+  
+  const currentRole = userSnap.data().role
+  
+  // 오너 역할 변경 방지: 오너를 다른 역할로 변경할 수 없음
+  if (currentRole === 'owner') {
+    throw new Error('오너 역할은 변경할 수 없습니다. 오너 계정은 ADMIN_OWNER_UID 환경 변수로 관리됩니다.')
+  }
+  
+  // 일반 사용자를 오너로 변경 방지: 오너는 직접 생성해야 함
+  if (role === 'owner') {
+    throw new Error('오너 역할은 직접 생성해야 합니다. scripts/create-owner-account.js 스크립트를 사용하거나 Firebase Console에서 수동으로 생성하세요.')
+  }
+  
   await updateDoc(userRef, {
     role,
     updatedAt: serverTimestamp(),

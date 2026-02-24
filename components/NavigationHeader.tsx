@@ -23,6 +23,28 @@ export default function NavigationHeader({ userProfile: propUserProfile, current
   }, [propUserProfile])
 
   const handleLogout = async () => {
+    // 관리자 페이지인 경우 관리자 로그아웃 API 호출 (세션 쿠키 삭제)
+    // 오너 계정은 세션 쿠키 기반 인증을 사용하므로 별도 로그아웃 필요
+    if (currentPage === 'admin') {
+      try {
+        const response = await fetch('/api/admin/logout', {
+          method: 'POST',
+        })
+        
+        if (response.ok) {
+          router.push('/admin/login')
+        } else {
+          console.error('관리자 로그아웃 실패:', await response.text())
+          alert('로그아웃에 실패했습니다.')
+        }
+      } catch (error) {
+        console.error('관리자 로그아웃 오류:', error)
+        alert('로그아웃 중 오류가 발생했습니다.')
+      }
+      return
+    }
+    
+    // 일반 사용자 로그아웃 (Firebase Auth)
     await signOut()
     router.push('/')
   }

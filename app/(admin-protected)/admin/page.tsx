@@ -49,10 +49,47 @@ export default function AdminPage() {
     }
   }
 
+  // 오너 계정 로그아웃 (세션 쿠키 삭제)
+  const handleAdminLogout = async () => {
+    try {
+      const response = await fetch('/api/admin/logout', {
+        method: 'POST',
+      })
+      
+      if (response.ok) {
+        // 로그아웃 성공 시 로그인 페이지로 리다이렉트
+        router.push('/admin/login')
+      } else {
+        console.error('로그아웃 실패:', await response.text())
+        alert('로그아웃에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('로그아웃 오류:', error)
+      alert('로그아웃 중 오류가 발생했습니다.')
+    }
+  }
+
   // /admin 페이지는 서버 사이드 세션 쿠키 기반으로 보호되므로 AuthGuard 불필요
   // app/(admin-protected)/admin/layout.tsx에서 이미 세션 검증을 수행함
+  // 세션 쿠키가 있으면 관리자 페이지에 접근 가능하므로, 항상 관리자 모드로 간주
+  
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* 관리자 모드 배너 및 로그아웃 버튼 */}
+      <div className="bg-blue-50 border-b border-blue-200 px-4 py-2">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <span className="text-sm text-blue-800 font-medium">
+            관리자 모드 {userProfile?.role === 'owner' && '(오너)'}
+          </span>
+          <button
+            onClick={handleAdminLogout}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1 rounded hover:bg-blue-100 transition-colors"
+          >
+            로그아웃
+          </button>
+        </div>
+      </div>
+      
       <NavigationHeader 
         userProfile={userProfile} 
         currentPage="admin"

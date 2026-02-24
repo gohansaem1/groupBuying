@@ -36,6 +36,9 @@
   3. Firebase Admin SDK로 `verifySessionCookie()` 실행
   4. 검증 실패 시 `/admin/login?error=session_invalid`로 리다이렉트
   5. 검증 성공 시 `children` 렌더링
+- **로그아웃 UI**:
+  - 페이지 상단에 "관리자 모드" 배너와 로그아웃 버튼 표시
+  - `NavigationHeader`에서도 관리자 페이지일 때 관리자 로그아웃 사용
 
 ### 3. 세션 로그인 API: `/api/admin/sessionLogin`
 
@@ -48,6 +51,17 @@
   3. `process.env.ADMIN_OWNER_UID`와 비교
   4. UID가 일치하면 세션 쿠키 생성 (`createSessionCookie`)
   5. HTTP-only, Secure 쿠키로 설정하여 응답 반환
+
+### 4. 세션 로그아웃 API: `/api/admin/logout`
+
+- **위치**: `app/api/admin/logout/route.ts`
+- **메서드**: `POST`
+- **처리 흐름**:
+  1. `admin_session` 쿠키 삭제 (Max-Age=0)
+  2. 성공 응답 반환
+- **UI**:
+  - 관리자 페이지 상단에 "관리자 모드" 배너와 로그아웃 버튼 표시
+  - `NavigationHeader`에서도 관리자 페이지일 때 관리자 로그아웃 사용
 
 ### 4. 환경 변수
 
