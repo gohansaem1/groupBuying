@@ -88,18 +88,28 @@ export default function Home() {
 
   useEffect(() => {
     // Firebase 초기화 상태 확인
-    if (!isFirebaseInitialized()) {
-      const initError = getFirebaseInitError()
-      if (initError) {
-        console.error('[홈 페이지] Firebase 초기화 실패:', initError.message)
-        setFirebaseError('Firebase 초기화 실패')
-        setFirebaseErrorDetail(initError.message)
-      } else {
-        console.warn('[홈 페이지] Firebase가 초기화되지 않았습니다.')
-        setFirebaseError('Firebase가 초기화되지 않았습니다.')
-        setFirebaseErrorDetail('환경 변수를 확인하세요.')
+    // try-catch로 감싸서 모듈 로드 에러도 처리
+    try {
+      if (!isFirebaseInitialized()) {
+        const initError = getFirebaseInitError()
+        if (initError) {
+          console.error('[홈 페이지] Firebase 초기화 실패:', initError.message)
+          setFirebaseError('Firebase 초기화 실패')
+          setFirebaseErrorDetail(initError.message)
+        } else {
+          console.warn('[홈 페이지] Firebase가 초기화되지 않았습니다.')
+          setFirebaseError('Firebase가 초기화되지 않았습니다.')
+          setFirebaseErrorDetail('환경 변수를 확인하세요.')
+        }
+        // Firebase 초기화 실패 시에도 기본 UI 표시
+        setLoading(false)
+        return
       }
-      // Firebase 초기화 실패 시에도 기본 UI 표시
+    } catch (error: any) {
+      // 모듈 로드 에러 처리
+      console.error('[홈 페이지] Firebase 모듈 로드 실패:', error)
+      setFirebaseError('Firebase 모듈 로드 실패')
+      setFirebaseErrorDetail(error.message || '환경 변수를 확인하세요.')
       setLoading(false)
       return
     }
@@ -109,6 +119,7 @@ export default function Home() {
     let authChangeCompleted = false
     let timeoutExecuted = false // 타임아웃이 이미 실행되었는지 추적
     let fallbackTimer: NodeJS.Timeout | null = null
+    let immediateCheckTimer: NodeJS.Timeout | null = null
 
     try {
       unsubscribe = onAuthChange(async (user) => {
@@ -121,6 +132,10 @@ export default function Home() {
         if (fallbackTimer) {
           clearTimeout(fallbackTimer)
           fallbackTimer = null
+        }
+        if (immediateCheckTimer) {
+          clearTimeout(immediateCheckTimer)
+          immediateCheckTimer = null
         }
         
         setUser(user)
@@ -144,6 +159,8 @@ export default function Home() {
           } catch (error: any) {
             if (!isMounted) return
             handleFirebaseError(error, '프로필 로드')
+            // 에러 발생 시에도 로딩 해제
+            authChangeCompleted = true
           }
         } else {
           setUserProfile(null)
@@ -155,11 +172,20 @@ export default function Home() {
         }
       })
       
-      // Firebase 응답이 느릴 때 3초 후 로딩 해제 및 타임아웃 표시 (한 번만 실행)
+      // onAuthChange가 즉시 콜백을 호출하지 않을 경우를 대비한 추가 안전장치
+      // 1초 후에도 콜백이 호출되지 않으면 경고 로그 출력
+      immediateCheckTimer = setTimeout(() => {
+        if (isMounted && !authChangeCompleted && !timeoutExecuted) {
+          console.warn('[홈 페이지] onAuthChange 콜백이 아직 호출되지 않았습니다.')
+        }
+      }, 1000)
+      
+      // Firebase 응답이 느릴 때 2초 후 로딩 해제 및 타임아웃 표시 (한 번만 실행)
+      // 배포 환경에서 Firebase 초기화가 느릴 수 있으므로 짧은 타임아웃 설정
       fallbackTimer = setTimeout(() => {
         if (isMounted && !authChangeCompleted && !timeoutExecuted) {
           timeoutExecuted = true
-          console.warn('[홈 페이지] Firebase 응답 지연 (3초 초과)')
+          console.warn('[홈 페이지] Firebase 응답 지연 (2초 초과)')
           console.warn('[홈 페이지] 가능한 원인:')
           console.warn('  1. Firebase 환경 변수 누락 (NEXT_PUBLIC_FIREBASE_*)')
           console.warn('  2. Firestore 보안 규칙 문제 (permission-denied)')
@@ -168,7 +194,7 @@ export default function Home() {
           setTimeoutReached(true)
           setLoading(false)
         }
-      }, 3000)
+      }, 2000)
     } catch (error: any) {
       console.error('[홈 페이지] onAuthChange 설정 실패:', error)
       handleFirebaseError(error, '인증 초기화')
@@ -183,6 +209,9 @@ export default function Home() {
       }
       if (fallbackTimer) {
         clearTimeout(fallbackTimer)
+      }
+      if (immediateCheckTimer) {
+        clearTimeout(immediateCheckTimer)
       }
     }
   }, [router])
