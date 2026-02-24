@@ -122,18 +122,31 @@ export async function POST(request: NextRequest) {
     if (userSnap.exists) {
       // 이미 문서가 있으면 그대로 반환
       const userData = userSnap.data()
+      
+      // Firestore Timestamp를 JSON 직렬화 가능한 형태로 변환
+      const profile: any = {
+        uid,
+        ...userData
+      }
+      
+      // Timestamp 필드를 변환
+      if (profile.createdAt && profile.createdAt.toDate) {
+        profile.createdAt = profile.createdAt.toDate().toISOString()
+      }
+      if (profile.updatedAt && profile.updatedAt.toDate) {
+        profile.updatedAt = profile.updatedAt.toDate().toISOString()
+      }
+      
       return NextResponse.json({
         exists: true,
-        profile: {
-          uid,
-          ...userData
-        }
+        profile
       })
     }
 
     // 문서가 없으면 생성
     const userRecord = await adminAuth.getUser(uid)
     
+    const now = new Date()
     const userProfile = {
       uid,
       email: userRecord.email || null,
@@ -143,8 +156,8 @@ export async function POST(request: NextRequest) {
       role: 'owner',
       userAgreedToTerms: false,
       organizerAgreedToTerms: false,
-      createdAt: adminDb.Timestamp.now(),
-      updatedAt: adminDb.Timestamp.now(),
+      createdAt: now,
+      updatedAt: now,
     }
 
     await userRef.set(userProfile)
@@ -156,15 +169,22 @@ export async function POST(request: NextRequest) {
       created: true,
       profile: {
         ...userProfile,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
       }
     })
 
   } catch (error: any) {
-    console.error('[오너 프로필] 오류:', error)
+    console.error('[오너 프로필] 오류:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+    })
     return NextResponse.json(
-      { error: '프로필 확인 중 오류가 발생했습니다.' },
+      { 
+        error: '프로필 확인 중 오류가 발생했습니다.',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
       { status: 500 }
     )
   }
