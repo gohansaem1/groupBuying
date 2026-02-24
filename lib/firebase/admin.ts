@@ -31,6 +31,19 @@ export async function setOrganizerRecruitmentStatus(enabled: boolean): Promise<v
 
 // 사용자 역할 변경 (관리자만)
 export async function updateUserRole(userId: string, role: 'user' | 'organizer_pending' | 'organizer' | 'admin' | 'owner'): Promise<void> {
+  const { auth } = await import('./config')
+  const currentUser = auth.currentUser
+  
+  if (!currentUser) {
+    throw new Error('Firebase 인증이 필요합니다. 로그인해주세요.')
+  }
+  
+  console.log('[updateUserRole] 역할 변경 시도:', {
+    currentUserId: currentUser.uid,
+    targetUserId: userId,
+    newRole: role,
+  })
+  
   const userRef = doc(db, 'users', userId)
   
   // 기존 사용자 역할 확인
@@ -51,10 +64,25 @@ export async function updateUserRole(userId: string, role: 'user' | 'organizer_p
     throw new Error('오너 역할은 직접 생성해야 합니다. scripts/create-owner-account.js 스크립트를 사용하거나 Firebase Console에서 수동으로 생성하세요.')
   }
   
-  await updateDoc(userRef, {
-    role,
-    updatedAt: serverTimestamp(),
-  })
+  try {
+    await updateDoc(userRef, {
+      role,
+      updatedAt: serverTimestamp(),
+    })
+    console.log('[updateUserRole] 역할 변경 성공:', {
+      userId,
+      oldRole: currentRole,
+      newRole: role,
+    })
+  } catch (error: any) {
+    console.error('[updateUserRole] 역할 변경 실패:', {
+      code: error.code,
+      message: error.message,
+      userId,
+      role,
+    })
+    throw error
+  }
 }
 
 // 진행자를 관리자로 승격 (오너만)
@@ -79,13 +107,36 @@ export async function promoteOrganizerToAdmin(organizerId: string): Promise<void
 
 // 모든 사용자 조회 (관리자만)
 export async function getAllUsers(): Promise<UserProfile[]> {
-  const usersRef = collection(db, 'users')
-  const snapshot = await getDocs(usersRef)
+  const { auth } = await import('./config')
+  const currentUser = auth.currentUser
   
-  return snapshot.docs.map(doc => ({
-    uid: doc.id,
-    ...doc.data()
-  } as UserProfile))
+  if (!currentUser) {
+    throw new Error('Firebase 인증이 필요합니다. 로그인해주세요.')
+  }
+  
+  console.log('[getAllUsers] Firebase 인증 확인:', {
+    uid: currentUser.uid,
+    email: currentUser.email,
+  })
+  
+  const usersRef = collection(db, 'users')
+  
+  try {
+    const snapshot = await getDocs(usersRef)
+    console.log('[getAllUsers] 사용자 목록 조회 성공:', snapshot.docs.length)
+    
+    return snapshot.docs.map(doc => ({
+      uid: doc.id,
+      ...doc.data()
+    } as UserProfile))
+  } catch (error: any) {
+    console.error('[getAllUsers] 사용자 목록 조회 실패:', {
+      code: error.code,
+      message: error.message,
+      uid: currentUser.uid,
+    })
+    throw error
+  }
 }
 
 // Organizer 대기 중인 사용자 조회

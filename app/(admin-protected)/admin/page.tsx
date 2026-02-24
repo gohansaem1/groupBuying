@@ -6,13 +6,14 @@ import { getOrganizerRecruitmentStatus, setOrganizerRecruitmentStatus, getAllUse
 import { UserProfile, getCurrentUserProfile, UserRole } from '@/lib/firebase/auth'
 import { getAllGroups, Group, Order, getGroupOrders, confirmGroup, cancelConfirmGroup, updateDeliveryDetailStatus } from '@/lib/firebase/groups'
 import { Timestamp, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
-import { db } from '@/lib/firebase/config'
+import { db, auth } from '@/lib/firebase/config'
 import { markShipping, markComplete } from '@/lib/firebase/groups'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NavigationHeader from '@/components/NavigationHeader'
 import { formatDate, formatTimeRemaining, isApproaching, formatDateTime } from '@/lib/utils/date'
 import * as XLSX from 'xlsx'
+import { onAuthStateChanged } from 'firebase/auth'
 
 type GroupStatus = '전체' | '진행중' | '달성' | '확정' | '배송중' | '완료'
 
@@ -26,24 +27,101 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadData()
+    // Firebase 인증 상태 확인 및 대기
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        console.log('[관리자 페이지] Firebase 인증 확인:', {
+          uid: user.uid,
+          email: user.email,
+        })
+        // 인증된 후 데이터 로드
+        await loadData()
+      } else {
+        console.warn('[관리자 페이지] Firebase 인증되지 않음 - 오너 계정이 Firebase Client SDK에 로그인되어 있지 않습니다.')
+        // 인증되지 않았어도 세션 쿠키는 있으므로 데이터 로드 시도
+        await loadData()
+      }
+    })
+
+    return () => unsubscribe()
   }, [])
 
   const loadData = async () => {
     setLoading(true)
     try {
+      // Firebase 인증 상태 확인
+      const currentUser = auth.currentUser
+      console.log('[관리자 페이지] 데이터 로드 시작:', {
+        hasAuthUser: !!currentUser,
+        uid: currentUser?.uid,
+        email: currentUser?.email,
+      })
+
+      // 오너 계정의 Firestore 프로필 확인/생성 (없으면 생성)
+      let ownerProfile: UserProfile | null = null
+      try {
+        const profileResponse = await fetch('/api/admin/ensureProfile', {
+          method: 'POST',
+        })
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          if (profileData.profile) {
+            ownerProfile = profileData.profile as UserProfile
+            console.log('[관리자 페이지] 오너 프로필 확인:', {
+              uid: ownerProfile.uid,
+              role: ownerProfile.role,
+              email: ownerProfile.email,
+            })
+          }
+        } else {
+          const errorText = await profileResponse.text()
+          console.warn('[관리자 페이지] 프로필 확인 실패:', errorText)
+        }
+      } catch (profileError) {
+        console.warn('[관리자 페이지] 프로필 확인 중 오류:', profileError)
+      }
+
+      // Firebase Client SDK 인증이 없으면 에러 표시
+      if (!currentUser) {
+        console.error('[관리자 페이지] Firebase Client SDK에 로그인되어 있지 않습니다. 오너 계정으로 /admin/login에서 다시 로그인해주세요.')
+        alert('Firebase 인증이 필요합니다. 페이지를 새로고침하거나 다시 로그인해주세요.')
+        return
+      }
+
       const [productsData, groupsData, recruitmentStatus, profile] = await Promise.all([
-        getAllProducts(),
-        getAllGroups(),
-        getOrganizerRecruitmentStatus(),
-        getCurrentUserProfile()
+        getAllProducts().catch(err => {
+          console.error('[관리자 페이지] 상품 로드 실패:', err)
+          throw new Error(`상품 로드 실패: ${err.message}`)
+        }),
+        getAllGroups().catch(err => {
+          console.error('[관리자 페이지] 그룹 로드 실패:', err)
+          throw new Error(`그룹 로드 실패: ${err.message}`)
+        }),
+        getOrganizerRecruitmentStatus().catch(err => {
+          console.error('[관리자 페이지] 모집 상태 로드 실패:', err)
+          return false
+        }),
+        getCurrentUserProfile().catch(err => {
+          console.error('[관리자 페이지] 프로필 로드 실패:', err)
+          return null
+        })
       ])
+      
+      console.log('[관리자 페이지] 데이터 로드 완료:', {
+        productsCount: productsData.length,
+        groupsCount: groupsData.length,
+        recruitmentStatus,
+        profileRole: profile?.role,
+      })
+
       setProducts(productsData)
       setGroups(groupsData)
       setOrganizerRecruitmentEnabled(recruitmentStatus)
-      setUserProfile(profile)
-    } catch (error) {
-      console.error('데이터 로드 오류:', error)
+      // 오너 프로필이 있으면 우선 사용, 없으면 getCurrentUserProfile 결과 사용
+      setUserProfile(ownerProfile || profile)
+    } catch (error: any) {
+      console.error('[관리자 페이지] 데이터 로드 오류:', error)
+      alert(`데이터 로드 실패: ${error.message || error}`)
     } finally {
       setLoading(false)
     }
@@ -900,20 +978,92 @@ function UsersTab({ onUpdate }: { onUpdate: () => void }) {
   const [selectedApplication, setSelectedApplication] = useState<string | null>(null) // 선택된 신청 정보
 
   useEffect(() => {
-    loadUsers()
+    // Firebase 인증 상태 확인 및 대기
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        console.log('[사용자 관리] Firebase 인증 확인:', {
+          uid: user.uid,
+          email: user.email,
+        })
+        // 인증된 후 데이터 로드
+        await loadUsers()
+      } else {
+        console.warn('[사용자 관리] Firebase 인증되지 않음')
+        // 인증되지 않았어도 세션 쿠키는 있으므로 데이터 로드 시도
+        await loadUsers()
+      }
+    })
+
+    return () => unsubscribe()
   }, [])
 
   const loadUsers = async () => {
     setLoading(true)
     try {
+      // Firebase 인증 상태 확인
+      const currentUser = auth.currentUser
+      console.log('[사용자 관리] 데이터 로드 시작:', {
+        hasAuthUser: !!currentUser,
+        uid: currentUser?.uid,
+        email: currentUser?.email,
+      })
+
+      // Firebase Client SDK 인증이 없으면 에러 표시
+      if (!currentUser) {
+        console.error('[사용자 관리] Firebase Client SDK에 로그인되어 있지 않습니다.')
+        alert('Firebase 인증이 필요합니다. 페이지를 새로고침하거나 다시 로그인해주세요.')
+        return
+      }
+
+      // 오너 계정의 Firestore 프로필 확인/생성 (없으면 생성)
+      let ownerProfile: UserProfile | null = null
+      try {
+        const profileResponse = await fetch('/api/admin/ensureProfile', {
+          method: 'POST',
+        })
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          if (profileData.profile) {
+            ownerProfile = profileData.profile as UserProfile
+            console.log('[사용자 관리] 오너 프로필 확인:', {
+              uid: ownerProfile.uid,
+              role: ownerProfile.role,
+              email: ownerProfile.email,
+            })
+          }
+        } else {
+          const errorText = await profileResponse.text()
+          console.warn('[사용자 관리] 프로필 확인 실패:', errorText)
+        }
+      } catch (profileError) {
+        console.warn('[사용자 관리] 프로필 확인 중 오류:', profileError)
+      }
+
       const [allUsers, pending, profile] = await Promise.all([
-        getAllUsers(),
-        getPendingOrganizers(),
-        getCurrentUserProfile()
+        getAllUsers().catch(err => {
+          console.error('[사용자 관리] 사용자 목록 로드 실패:', err)
+          throw new Error(`사용자 목록 로드 실패: ${err.message}`)
+        }),
+        getPendingOrganizers().catch(err => {
+          console.error('[사용자 관리] 대기 중인 진행자 로드 실패:', err)
+          return []
+        }),
+        getCurrentUserProfile().catch(err => {
+          console.error('[사용자 관리] 프로필 로드 실패:', err)
+          return null
+        })
       ])
+      
+      console.log('[사용자 관리] 데이터 로드 완료:', {
+        usersCount: allUsers.length,
+        pendingCount: pending.length,
+        profileRole: profile?.role,
+      })
+
       setUsers(allUsers)
       setPendingOrganizers(pending)
-      setCurrentUser(profile)
+      // 오너 프로필이 있으면 우선 사용, 없으면 getCurrentUserProfile 결과 사용
+      setCurrentUser(ownerProfile || profile)
       
       // 기본 수수료율 로드
       const defaultRate = await getDefaultCommissionRate()

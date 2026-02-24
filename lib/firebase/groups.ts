@@ -288,13 +288,36 @@ export async function getGroups(): Promise<Group[]> {
 
 // 모든 그룹 조회 (관리자용)
 export async function getAllGroups(): Promise<Group[]> {
-  const groupsRef = collection(db, 'groups')
-  const snapshot = await getDocs(groupsRef)
+  const { auth } = await import('./config')
+  const currentUser = auth.currentUser
   
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  } as Group))
+  if (!currentUser) {
+    throw new Error('Firebase 인증이 필요합니다. 로그인해주세요.')
+  }
+  
+  console.log('[getAllGroups] Firebase 인증 확인:', {
+    uid: currentUser.uid,
+    email: currentUser.email,
+  })
+  
+  const groupsRef = collection(db, 'groups')
+  
+  try {
+    const snapshot = await getDocs(groupsRef)
+    console.log('[getAllGroups] 그룹 목록 조회 성공:', snapshot.docs.length)
+    
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Group))
+  } catch (error: any) {
+    console.error('[getAllGroups] 그룹 목록 조회 실패:', {
+      code: error.code,
+      message: error.message,
+      uid: currentUser.uid,
+    })
+    throw error
+  }
 }
 
 // Organizer의 그룹 목록 조회

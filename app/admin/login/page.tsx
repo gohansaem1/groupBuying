@@ -70,6 +70,24 @@ export default function AdminLoginPage() {
         throw new Error(data.error || '로그인에 실패했습니다.')
       }
 
+      // 오너 계정의 Firestore 프로필 확인/생성
+      try {
+        const profileResponse = await fetch('/api/admin/ensureProfile', {
+          method: 'POST',
+        })
+        
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          if (profileData.created) {
+            console.log('[관리자 로그인] 오너 계정 프로필이 생성되었습니다.')
+          }
+        } else {
+          console.warn('[관리자 로그인] 프로필 확인 실패 (계속 진행):', await profileResponse.text())
+        }
+      } catch (profileError) {
+        console.warn('[관리자 로그인] 프로필 확인 중 오류 (계속 진행):', profileError)
+      }
+
       // 로그인 성공 시 /admin으로 이동 (또는 redirect 파라미터가 있으면 해당 경로로)
       const redirect = new URLSearchParams(window.location.search).get('redirect') || '/admin'
       router.replace(redirect)

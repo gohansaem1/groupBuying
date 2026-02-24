@@ -49,13 +49,36 @@ export async function getProducts(): Promise<Product[]> {
 
 // 모든 상품 조회 (관리자용)
 export async function getAllProducts(): Promise<Product[]> {
-  const productsRef = collection(db, 'products')
-  const snapshot = await getDocs(productsRef)
+  const { auth } = await import('./config')
+  const currentUser = auth.currentUser
   
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  } as Product))
+  if (!currentUser) {
+    throw new Error('Firebase 인증이 필요합니다. 로그인해주세요.')
+  }
+  
+  console.log('[getAllProducts] Firebase 인증 확인:', {
+    uid: currentUser.uid,
+    email: currentUser.email,
+  })
+  
+  const productsRef = collection(db, 'products')
+  
+  try {
+    const snapshot = await getDocs(productsRef)
+    console.log('[getAllProducts] 상품 목록 조회 성공:', snapshot.docs.length)
+    
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Product))
+  } catch (error: any) {
+    console.error('[getAllProducts] 상품 목록 조회 실패:', {
+      code: error.code,
+      message: error.message,
+      uid: currentUser.uid,
+    })
+    throw error
+  }
 }
 
 // 상품 조회
