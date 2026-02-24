@@ -119,23 +119,18 @@ export default function Home() {
     let authChangeCompleted = false
     let timeoutExecuted = false // 타임아웃이 이미 실행되었는지 추적
     let fallbackTimer: NodeJS.Timeout | null = null
-    let immediateCheckTimer: NodeJS.Timeout | null = null
 
     try {
       unsubscribe = onAuthChange(async (user) => {
         if (!isMounted) return
         
-        // 타임아웃이 이미 실행되었으면 무시
-        if (timeoutExecuted) return
+        // 타임아웃이 이미 실행되었으면 무시하지 않고 처리 (사용자 상태 업데이트)
+        // 단, 로딩 상태는 이미 해제되었을 수 있으므로 확인
         
         // 타임아웃 타이머 정리
         if (fallbackTimer) {
           clearTimeout(fallbackTimer)
           fallbackTimer = null
-        }
-        if (immediateCheckTimer) {
-          clearTimeout(immediateCheckTimer)
-          immediateCheckTimer = null
         }
         
         setUser(user)
@@ -172,20 +167,12 @@ export default function Home() {
         }
       })
       
-      // onAuthChange가 즉시 콜백을 호출하지 않을 경우를 대비한 추가 안전장치
-      // 1초 후에도 콜백이 호출되지 않으면 경고 로그 출력
-      immediateCheckTimer = setTimeout(() => {
-        if (isMounted && !authChangeCompleted && !timeoutExecuted) {
-          console.warn('[홈 페이지] onAuthChange 콜백이 아직 호출되지 않았습니다.')
-        }
-      }, 1000)
-      
-      // Firebase 응답이 느릴 때 2초 후 로딩 해제 및 타임아웃 표시 (한 번만 실행)
+      // Firebase 응답이 느릴 때 1.5초 후 로딩 해제 및 타임아웃 표시 (한 번만 실행)
       // 배포 환경에서 Firebase 초기화가 느릴 수 있으므로 짧은 타임아웃 설정
       fallbackTimer = setTimeout(() => {
         if (isMounted && !authChangeCompleted && !timeoutExecuted) {
           timeoutExecuted = true
-          console.warn('[홈 페이지] Firebase 응답 지연 (2초 초과)')
+          console.warn('[홈 페이지] Firebase 응답 지연 (1.5초 초과)')
           console.warn('[홈 페이지] 가능한 원인:')
           console.warn('  1. Firebase 환경 변수 누락 (NEXT_PUBLIC_FIREBASE_*)')
           console.warn('  2. Firestore 보안 규칙 문제 (permission-denied)')
@@ -194,7 +181,7 @@ export default function Home() {
           setTimeoutReached(true)
           setLoading(false)
         }
-      }, 2000)
+      }, 1500)
     } catch (error: any) {
       console.error('[홈 페이지] onAuthChange 설정 실패:', error)
       handleFirebaseError(error, '인증 초기화')
@@ -209,9 +196,6 @@ export default function Home() {
       }
       if (fallbackTimer) {
         clearTimeout(fallbackTimer)
-      }
-      if (immediateCheckTimer) {
-        clearTimeout(immediateCheckTimer)
       }
     }
   }, [router])
@@ -408,6 +392,26 @@ export default function Home() {
   // 타임아웃/에러가 있거나 로그인하지 않은 사용자 - 기본 홈 화면 표시
   if (!user || timeoutReached || firebaseError) {
     return renderHomeContent()
+  }
+
+  // 로그인한 사용자이지만 프로필이 아직 로드되지 않은 경우
+  if (user && !userProfile) {
+    // 프로필 로딩 중이지만 타임아웃이 지났으면 기본 UI 표시
+    if (timeoutReached || firebaseError) {
+      return renderHomeContent()
+    }
+    // 프로필 로딩 중
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <NavigationHeader userProfile={null} currentPage="home" />
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-lg text-gray-600 mb-2">로딩 중...</div>
+            <p className="text-sm text-gray-500">프로필을 불러오는 중입니다</p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // 로그인한 모든 사용자(관리자, 진행자, organizer_pending, 일반 사용자) 홈 페이지 표시
@@ -608,10 +612,7 @@ export default function Home() {
     )
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-lg">로딩 중...</div>
-    </div>
-  )
+  // 모든 조건을 만족하지 않는 경우 (fallback) - 기본 홈 화면 표시
+  return renderHomeContent()
 }
 
